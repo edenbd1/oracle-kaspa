@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.log
+.env
+proofs/raw/*.json
+proofs/index/*.json
+kaspa-wasm-sdk/
+kaspa-wasm-sdk.zip

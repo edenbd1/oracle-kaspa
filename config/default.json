@@ -1,0 +1,22 @@
+{
+  "network": "testnet-10",
+  "addressPrefixExpected": "kaspatest:",
+  "anchorIntervalSeconds": 60,
+  "jitterSeconds": 5,
+  "rpcUrl": "ws://127.0.0.1:17210",
+  "providers": {
+    "coingecko": {
+      "enabled": true,
+      "endpoint": "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+    },
+    "coinmarketcap": {
+      "enabled": true,
+      "endpoint": "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=BTC&convert=USD",
+      "apiKeyEnvVars": ["CMC_API_KEY", "CMC_API_KEY_2", "CMC_API_KEY_3"]
+    }
+  },
+  "aggregation": {
+    "outlierThresholdRatio": 0.01,
+    "minValidSources": 2
+  }
+}
