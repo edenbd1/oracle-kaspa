@@ -4,7 +4,8 @@ import { initCollector, fetchAllPrices } from './collector/index.js';
 import { aggregate } from './aggregator/index.js';
 import { createBundle, hashBundle, storeBundle, updateLatest } from './proofs/index.js';
 import { KaspaAnchor } from './kaspa-anchor/index.js';
-import { startApiServer } from './api/index.js';
+import { startApiServer, setAnchor } from './api/index.js';
+import { updateOracleState } from './state.js';
 import { AnchorPayload } from './types.js';
 
 function jitter(seconds: number): number {
@@ -30,7 +31,11 @@ async function main() {
 
   await anchor.connect(config.rpcUrl, privateKey, config.network);
 
-  // Start API server for bundle access
+  // Initialize oracle state
+  updateOracleState({ network: config.network });
+
+  // Start API server for bundle access (with anchor reference for health checks)
+  setAnchor(anchor);
   startApiServer();
 
   async function tick() {
@@ -80,6 +85,17 @@ async function main() {
     if (txId) {
       updateLatest(hash, txId);
     }
+
+    // 6. Update oracle state for health endpoint
+    updateOracleState({
+      last_tick_id: bundle.tick_id,
+      last_updated_at: new Date().toISOString(),
+      last_txid: txId,
+      last_hash: h,
+      last_price: index.price,
+      providers_ok: okCount,
+      providers_total: responses.length
+    });
 
     console.log(`  Done in ${Date.now() - tickStart}ms`);
 

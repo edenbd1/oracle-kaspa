@@ -136,4 +136,48 @@ export class KaspaAnchor {
       await this.rpc.disconnect();
     }
   }
+
+  /**
+   * Get health status for API endpoint.
+   * Returns null for fields that fail to fetch (never throws).
+   */
+  async getHealthInfo(): Promise<{
+    utxo_count: number | null;
+    balance_sompi: string | null;
+    is_synced: boolean | null;
+    virtual_daa_score: string | null;
+  }> {
+    const result = {
+      utxo_count: null as number | null,
+      balance_sompi: null as string | null,
+      is_synced: null as boolean | null,
+      virtual_daa_score: null as string | null
+    };
+
+    if (!this.rpc) return result;
+
+    try {
+      const { entries } = await this.rpc.getUtxosByAddresses({ addresses: [this.address] });
+      if (entries) {
+        result.utxo_count = entries.length;
+        const balance = (entries as Array<{ amount: bigint }>).reduce(
+          (sum, e) => sum + BigInt(e.amount || 0), 0n
+        );
+        result.balance_sompi = balance.toString();
+      }
+    } catch { /* ignore */ }
+
+    try {
+      const syncStatus = await this.rpc.getSyncStatus();
+      result.is_synced = (syncStatus as { isSynced?: boolean })?.isSynced ?? null;
+    } catch { /* ignore */ }
+
+    try {
+      const dagInfo = await this.rpc.getBlockDagInfo();
+      const score = (dagInfo as { virtualDaaScore?: bigint })?.virtualDaaScore;
+      result.virtual_daa_score = score !== undefined ? score.toString() : null;
+    } catch { /* ignore */ }
+
+    return result;
+  }
 }

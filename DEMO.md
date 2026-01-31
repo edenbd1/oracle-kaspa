@@ -185,9 +185,91 @@ This proves the anchored price was computed from the specific provider responses
 
 | Endpoint | Description |
 |----------|-------------|
+| `GET /health` | Full health status (oracle + kaspad) |
 | `GET /latest` | Latest bundle + txid |
 | `GET /bundle/:h` | Bundle by hash (16 hex chars) |
-| `GET /health` | Health check |
+| `GET /verify/:txid` | Verify a transaction (64 hex chars) |
+
+### Health Endpoint Example
+
+```bash
+curl http://localhost:3000/health | jq
+```
+
+Response:
+```json
+{
+  "status": "healthy",
+  "timestamp": "2025-01-15T10:35:00.000Z",
+  "oracle": {
+    "network": "testnet-10",
+    "last_tick_id": "2025-01-15T10:30:00.000Z",
+    "last_updated_at": "2025-01-15T10:30:05.000Z",
+    "lag_seconds": 295,
+    "last_txid": "abc123def456...",
+    "last_hash": "a1b2c3d4e5f6g7h8",
+    "last_price": 96249.25,
+    "providers_ok": 2,
+    "providers_total": 2
+  },
+  "kaspa": {
+    "is_synced": true,
+    "virtual_daa_score": "123456789",
+    "utxo_count": 5,
+    "balance_sompi": "50000000000"
+  }
+}
+```
+
+Status values:
+- `healthy` - All systems operational
+- `degraded` - Some providers failing or lag elevated (60-120s)
+- `unhealthy` - Critical issue (all providers down, kaspad not synced, no UTXOs, lag >120s)
+
+### Verify Endpoint Example
+
+```bash
+curl http://localhost:3000/verify/<txid> | jq
+```
+
+Response:
+```json
+{
+  "txid": "abc123...",
+  "network": "testnet-10",
+  "status": "PASSED",
+  "tx_found": true,
+  "block_time": "2025-01-15T10:30:00.000Z",
+  "payload_hex": "a4616400...",
+  "payload_size": 47,
+  "decoded": {
+    "p": 96249.25,
+    "n": 2,
+    "d": 0.000016,
+    "h": "a1b2c3d4e5f6g7h8"
+  },
+  "validation": { "valid": true, "errors": [] },
+  "bundle_found": true,
+  "hash_verified": true,
+  "bundle_summary": {
+    "tick_id": "2025-01-15T10:30:00.000Z",
+    "network": "testnet-10",
+    "price": 96249.25,
+    "sources_used": ["coingecko", "coinmarketcap"],
+    "dispersion": 0.000016
+  },
+  "provider_responses": [
+    { "provider": "coingecko", "price": 96250.00, "ok": true, "error": null },
+    { "provider": "coinmarketcap", "price": 96248.50, "ok": true, "error": null }
+  ]
+}
+```
+
+Status values:
+- `PASSED` - TX found, payload valid, bundle verified
+- `PARTIAL` - TX valid but bundle not found locally
+- `FAILED` - Validation or hash verification failed
+- `ERROR` - TX not found or invalid TXID
 
 ## Architecture
 
