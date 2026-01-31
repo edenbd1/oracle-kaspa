@@ -12,7 +12,12 @@
     "smoke:kaspa:dry": "tsx scripts/smoke-kaspa-dry.ts",
     "smoke:kaspa:live": "tsx scripts/smoke-kaspa-live.ts",
     "verify:tx": "tsx scripts/verify-tx.ts",
-    "api": "tsx src/api/index.ts"
+    "api": "tsx src/api/index.ts",
+    "pm": "tsx src/pm/index.ts",
+    "pm:seed": "tsx scripts/seed-markets.ts",
+    "pm:seed:reset": "tsx scripts/seed-markets.ts --reset",
+    "pm:simulate": "tsx scripts/simulate-trades.ts",
+    "pm:serve": "npx serve public -l 8080"
   },
   "dependencies": {
     "cbor-x": "^1.5.0",
