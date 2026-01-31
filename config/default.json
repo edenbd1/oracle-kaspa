@@ -12,7 +12,7 @@
     "coinmarketcap": {
       "enabled": true,
       "endpoint": "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=BTC&convert=USD",
-      "apiKeyEnvVars": ["CMC_API_KEY", "CMC_API_KEY_2", "CMC_API_KEY_3"]
+      "apiKeyEnvVars": ["CMC_API_KEY", "CMC_API_KEY_2", "CMC_API_KEY_3", "CMC_API_KEY_4", "CMC_API_KEY_5"]
     }
   },
   "aggregation": {
