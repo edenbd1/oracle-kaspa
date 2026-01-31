@@ -2,8 +2,9 @@ import 'dotenv/config';
 import { loadConfig } from './config.js';
 import { initCollector, fetchAllPrices } from './collector/index.js';
 import { aggregate } from './aggregator/index.js';
-import { createBundle, hashBundle, storeBundle } from './proofs/index.js';
+import { createBundle, hashBundle, storeBundle, updateLatest } from './proofs/index.js';
 import { KaspaAnchor } from './kaspa-anchor/index.js';
+import { startApiServer } from './api/index.js';
 import { AnchorPayload } from './types.js';
 
 function jitter(seconds: number): number {
@@ -29,6 +30,9 @@ async function main() {
 
   await anchor.connect(config.rpcUrl, privateKey, config.network);
 
+  // Start API server for bundle access
+  startApiServer();
+
   async function tick() {
     const tickStart = Date.now();
     console.log(`\n[TICK] ${new Date().toISOString()}`);
@@ -45,22 +49,23 @@ async function main() {
     const index = aggregate(responses, config.aggregation);
     console.log(`  Index: $${index.price.toFixed(2)} [${index.status}]`);
 
-    // 3. Create and store proof
+    // 3. Create bundle and compute hash
     const bundle = createBundle(responses, index, config);
     const hash = hashBundle(bundle);
-    storeBundle(bundle, hash);
-    console.log(`  Bundle: ${hash.slice(0, 16)}...`);
+    const h = hash.slice(0, 16);
+    console.log(`  Bundle: ${h}...`);
 
     // 4. Anchor if OK
+    let txId: string | null = null;
     if (index.status === 'OK') {
       // Payload contains only: d, h, n, p (alphabetically sorted for deterministic CBOR)
       const payload: AnchorPayload = {
         d: Math.round(index.dispersion * 10000) / 10000,
-        h: hash.slice(0, 16),
+        h,
         n: index.num_sources,
         p: Math.round(index.price * 100) / 100,
       };
-      const txId = await anchor.anchor(payload);
+      txId = await anchor.anchor(payload);
       if (txId) {
         console.log(`  TX: ${txId}`);
       } else {
@@ -68,6 +73,12 @@ async function main() {
       }
     } else {
       console.log(`  SKIPPED (${index.status})`);
+    }
+
+    // 5. Store bundle with txid and update latest
+    storeBundle(bundle, hash, txId || undefined);
+    if (txId) {
+      updateLatest(hash, txId);
     }
 
     console.log(`  Done in ${Date.now() - tickStart}ms`);

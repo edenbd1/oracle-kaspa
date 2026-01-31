@@ -4,5 +4,6 @@ dist/
 .env
 proofs/raw/*.json
 proofs/index/*.json
+data/
 kaspa-wasm-sdk/
 kaspa-wasm-sdk.zip

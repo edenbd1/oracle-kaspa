@@ -10,7 +10,9 @@
     "smoke:collector": "tsx scripts/smoke-collector.ts",
     "smoke:aggregator": "tsx scripts/smoke-aggregator.ts",
     "smoke:kaspa:dry": "tsx scripts/smoke-kaspa-dry.ts",
-    "smoke:kaspa:live": "tsx scripts/smoke-kaspa-live.ts"
+    "smoke:kaspa:live": "tsx scripts/smoke-kaspa-live.ts",
+    "verify:tx": "tsx scripts/verify-tx.ts",
+    "api": "tsx src/api/index.ts"
   },
   "dependencies": {
     "cbor-x": "^1.5.0",
