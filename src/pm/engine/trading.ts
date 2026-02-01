@@ -47,6 +47,7 @@ export interface TradeRequest {
   kasAmount?: number;    // For BUY
   sharesAmount?: number; // For SELL
   maxSlippage?: number;
+  txid?: string;         // For non-custodial trades (on-chain tx id)
 }
 
 export interface TradeResult {
@@ -119,15 +120,32 @@ function executeBuy(
   wallet: string,
   side: 'YES' | 'NO',
   kasAmount: number,
-  maxSlippage: number
+  maxSlippage: number,
+  txid?: string
 ): TradeResult {
-  // Validate balance
-  const balance = getBalance(wallet);
-  if (!balance || balance.balance_kas < kasAmount) {
-    return {
-      success: false,
-      error: `Insufficient balance. Have: ${balance?.balance_kas.toFixed(2) || 0} KAS, need: ${kasAmount} KAS`
-    };
+  // For non-custodial trades, we trust the txid (in production, verify on-chain)
+  const isNonCustodial = !!txid;
+
+  // Validate balance (skip for non-custodial trades)
+  let balance = getBalance(wallet);
+  if (!isNonCustodial) {
+    if (!balance || balance.balance_kas < kasAmount) {
+      return {
+        success: false,
+        error: `Insufficient balance. Have: ${balance?.balance_kas.toFixed(2) || 0} KAS, need: ${kasAmount} KAS`
+      };
+    }
+  } else {
+    // For non-custodial, create balance record if doesn't exist
+    if (!balance) {
+      balance = {
+        wallet,
+        balance_kas: 0,
+        deposited_kas: 0,
+        withdrawn_kas: 0
+      };
+    }
+    console.log(`[Trade] Non-custodial BUY: ${kasAmount} KAS from ${wallet}, txid: ${txid}`);
   }
 
   // Get quote
@@ -142,8 +160,10 @@ function executeBuy(
     };
   }
 
-  // Deduct balance
-  balance.balance_kas -= kasAmount;
+  // Deduct balance (only for custodial trades)
+  if (!isNonCustodial) {
+    balance.balance_kas -= kasAmount;
+  }
   upsertBalance(balance);
 
   // Update market state
@@ -322,7 +342,7 @@ function executeSell(
  * Execute a trade (buy or sell).
  */
 export function executeTrade(request: TradeRequest): TradeResult {
-  const { wallet, marketId, side, action, kasAmount, sharesAmount, maxSlippage = 0.1 } = request;
+  const { wallet, marketId, side, action, kasAmount, sharesAmount, maxSlippage = 0.1, txid } = request;
 
   // Validate market
   const market = getMarket(marketId);
@@ -337,7 +357,7 @@ export function executeTrade(request: TradeRequest): TradeResult {
     if (!kasAmount || kasAmount <= 0) {
       return { success: false, error: 'kasAmount is required for BUY' };
     }
-    return executeBuy(market, wallet, side, kasAmount, maxSlippage);
+    return executeBuy(market, wallet, side, kasAmount, maxSlippage, txid);
   } else {
     if (!sharesAmount || sharesAmount <= 0) {
       return { success: false, error: 'sharesAmount is required for SELL' };

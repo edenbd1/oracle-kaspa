@@ -3,7 +3,7 @@
 import { classNames } from '@/lib/utils';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'success' | 'danger' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'success' | 'danger' | 'warning' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
   isLoading?: boolean;
 }
@@ -24,6 +24,7 @@ export function Button({
     secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80 focus:ring-secondary',
     success: 'bg-success text-white hover:bg-success/90 focus:ring-success',
     danger: 'bg-destructive text-white hover:bg-destructive/90 focus:ring-destructive',
+    warning: 'bg-warning text-white hover:bg-warning/90 focus:ring-warning',
     ghost: 'bg-transparent hover:bg-muted text-foreground focus:ring-muted',
   };
 

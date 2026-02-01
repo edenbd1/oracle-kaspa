@@ -377,17 +377,17 @@ export function getKRC20TokenHistory(ticker: string): Array<KRC20MintEvent | KRC
 
 export function seedDemoData(): void {
   // Create demo event
-  const deadline = new Date('2026-02-01T00:00:00Z').getTime();
+  const deadline = new Date('2026-03-01T00:00:00Z').getTime();
   const event = createEvent(
     'Bitcoin Price Prediction',
-    'What price will Bitcoin hit before February 1, 2026?',
+    'What price will Bitcoin hit before March 1, 2026?',
     'BTC',
     deadline
   );
   addEvent(event);
 
-  // Create markets at different thresholds
-  const thresholds = [150000, 130000, 120000, 100000, 80000];
+  // Create markets at different thresholds (based on current BTC ~$77k)
+  const thresholds = [150000, 140000, 130000, 120000, 110000, 100000, 90000, 80000];
   const liquidityB = 200; // Higher liquidity for smoother price curves
   const feeBps = 100; // 1% fee
 

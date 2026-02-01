@@ -69,7 +69,10 @@ export async function executeTrade(params: {
   action: TradeAction;
   kasAmount?: number;
   sharesAmount?: number;
+  txid?: string; // For non-custodial trades
+  maxSlippage?: number; // Max acceptable price impact as fraction (0.05 = 5%)
 }): Promise<TradeResult> {
+  console.log('[API] executeTrade params:', params);
   return fetchJson<TradeResult>(`${API_BASE}/trade`, {
     method: 'POST',
     body: JSON.stringify(params),

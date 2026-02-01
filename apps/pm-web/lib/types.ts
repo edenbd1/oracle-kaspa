@@ -87,16 +87,15 @@ export interface UserBalance {
 }
 
 export interface Quote {
-  marketId: string;
-  side: TradeSide;
   action: TradeAction;
+  side: TradeSide;
   shares: number;
   kasAmount: number;
   avgPrice: number;
   fee: number;
   priceImpact: number;
-  newPriceYes: number;
-  newPriceNo: number;
+  priceBefore: number;
+  priceAfter: number;
 }
 
 export interface TradeResult {
@@ -111,6 +110,17 @@ export interface TradeResult {
   newBalance?: number;
   tokenMinted?: { ticker: string; amount: number };
   tokenBurned?: { ticker: string; amount: number };
+  txid?: string; // On-chain transaction ID for non-custodial trades
+}
+
+export interface NonCustodialTradeParams {
+  marketId: string;
+  address: string;
+  side: TradeSide;
+  action: TradeAction;
+  kasAmount?: number;
+  sharesAmount?: number;
+  txid: string; // Transaction ID from wallet
 }
 
 export interface EventsResponse {

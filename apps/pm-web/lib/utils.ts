@@ -7,11 +7,17 @@ export function formatPrice(price: number): string {
   }).format(price);
 }
 
-export function formatKas(amount: number): string {
-  if (amount >= 1000) {
+export function formatKas(amount: number, precision: 'full' | 'compact' = 'full'): string {
+  if (precision === 'compact') {
+    // Compact: 2 decimals for display in tight spaces
     return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' KAS';
   }
-  return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) + ' KAS';
+  // Full precision: show up to 8 decimals (Kaspa has 8 decimal places)
+  // But trim trailing zeros for cleaner display
+  const formatted = amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 });
+  // Remove unnecessary trailing zeros after the minimum 2 decimals
+  const cleaned = formatted.replace(/(\.\d{2})0+$/, '$1').replace(/(\.\d*[1-9])0+$/, '$1');
+  return cleaned + ' KAS';
 }
 
 export function formatPercent(value: number): string {

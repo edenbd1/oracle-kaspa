@@ -59,15 +59,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     if (!address) return;
 
     try {
-      // Get PM platform balance and positions
+      // Get PM platform positions
       const data = await fetchWallet(address);
       setPositions(data.positions);
 
-      // If using a real wallet, also check on-chain balance
+      // For non-custodial wallets, show on-chain balance
+      // For demo wallets, show platform balance
       if (walletType && walletType !== 'demo') {
-        const onChainBalance = await getWalletBalance(walletType);
-        // Use platform balance for trading, but show on-chain balance info
-        setBalance(data.balance_kas);
+        const onChainBalance = await getWalletBalance(walletType, address);
+        setBalance(onChainBalance);
       } else {
         setBalance(data.balance_kas);
       }
@@ -97,14 +97,22 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       // Fetch or create platform account
       const data = await fetchWallet(addr);
 
-      if (data.balance_kas === 0 && data.deposited_kas === 0) {
-        // New wallet on platform, give them starting balance for demo
-        await apiDeposit(addr, 1000);
-        const updated = await fetchWallet(addr);
-        setBalance(updated.balance_kas);
-        setPositions(updated.positions);
+      if (type === 'demo') {
+        // Demo wallet - use platform balance
+        if (data.balance_kas === 0 && data.deposited_kas === 0) {
+          // New demo wallet on platform, give them starting balance
+          await apiDeposit(addr, 1000);
+          const updated = await fetchWallet(addr);
+          setBalance(updated.balance_kas);
+          setPositions(updated.positions);
+        } else {
+          setBalance(data.balance_kas);
+          setPositions(data.positions);
+        }
       } else {
-        setBalance(data.balance_kas);
+        // Non-custodial wallet - use on-chain balance
+        const onChainBalance = await getWalletBalance(type, addr);
+        setBalance(onChainBalance);
         setPositions(data.positions);
       }
 
@@ -179,12 +187,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }, [address, walletType, disconnect, connect, refreshWallet]);
 
   // Poll for updates when connected
+  // Non-custodial wallets poll faster (2s) since balance changes on-chain
   useEffect(() => {
     if (!address) return;
 
-    const interval = setInterval(refreshWallet, 5000);
+    const pollInterval = walletType && walletType !== 'demo' ? 2000 : 5000;
+    const interval = setInterval(refreshWallet, pollInterval);
     return () => clearInterval(interval);
-  }, [address, refreshWallet]);
+  }, [address, walletType, refreshWallet]);
 
   return (
     <WalletContext.Provider

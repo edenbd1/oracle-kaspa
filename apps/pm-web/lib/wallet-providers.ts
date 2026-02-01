@@ -11,7 +11,9 @@ export interface KastleProvider {
   disconnect(): Promise<void>;
   getAccount(): Promise<{ address: string; publicKey: string }>;
   signMessage(message: string): Promise<string>;
-  sendKaspa(toAddress: string, sompi: number, options?: { priorityFee?: number }): Promise<string>;
+  sendKaspa(toAddress: string, sompi: number, options?: { priorityFee?: number; payload?: string }): Promise<string>;
+  signAndBroadcastTx(networkId: 'mainnet' | 'testnet-10', txJson: string, scripts?: unknown): Promise<string>;
+  signTx(networkId: 'mainnet' | 'testnet-10', txJson: string, scripts?: unknown): Promise<string>;
   switchNetwork(networkId: 'mainnet' | 'testnet-10'): Promise<string>;
   request(method: string, args?: unknown): Promise<unknown>;
   on?(event: string, callback: (...args: unknown[]) => void): void;
@@ -24,6 +26,7 @@ export interface KasWareProvider {
   getAccounts(): Promise<string[]>;
   getBalance(): Promise<{ confirmed: number; unconfirmed: number; total: number }>;
   getNetwork(): Promise<string>;
+  sendKaspa(toAddress: string, sompi: number, options?: { priorityFee?: number }): Promise<string>;
   disconnect?(origin: string): Promise<void>;
   on?(event: string, callback: (...args: unknown[]) => void): void;
   removeListener?(event: string, callback: (...args: unknown[]) => void): void;
@@ -43,10 +46,24 @@ export interface DetectedWallet {
   provider: KastleProvider | KasWareProvider | null;
 }
 
+// Platform address to receive trades (testnet)
+// TODO: Replace with actual platform wallet address
+export const PLATFORM_ADDRESS = process.env.NEXT_PUBLIC_PLATFORM_ADDRESS || '';
+
+// Sompi conversion (1 KAS = 100,000,000 sompi)
+export const SOMPI_PER_KAS = 100_000_000;
+
+export function kasToSompi(kas: number): number {
+  return Math.floor(kas * SOMPI_PER_KAS);
+}
+
+export function sompiToKas(sompi: number): number {
+  return sompi / SOMPI_PER_KAS;
+}
+
 export function detectWallets(): DetectedWallet[] {
   const wallets: DetectedWallet[] = [];
 
-  // Check for Kastle
   if (typeof window !== 'undefined' && window.kastle) {
     wallets.push({
       type: 'kastle',
@@ -56,7 +73,6 @@ export function detectWallets(): DetectedWallet[] {
     });
   }
 
-  // Check for KasWare
   if (typeof window !== 'undefined' && window.kasware) {
     wallets.push({
       type: 'kasware',
@@ -79,7 +95,6 @@ export async function connectWallet(type: WalletType): Promise<string | null> {
         throw new Error('Kastle wallet not found. Please install the extension.');
       }
 
-      // Kastle uses connect() then getAccount()
       const connected = await provider.connect();
       if (!connected) {
         throw new Error('Connection rejected by user');
@@ -98,7 +113,6 @@ export async function connectWallet(type: WalletType): Promise<string | null> {
         throw new Error('KasWare wallet not found. Please install the extension.');
       }
 
-      // KasWare uses requestAccounts()
       const accounts = await provider.requestAccounts();
       if (accounts && accounts.length > 0) {
         return accounts[0];
@@ -109,7 +123,6 @@ export async function connectWallet(type: WalletType): Promise<string | null> {
     throw new Error(`Unknown wallet type: ${type}`);
   } catch (error) {
     if (error instanceof Error) {
-      // User rejected or other error
       if (error.message.includes('rejected') || error.message.includes('denied') || error.message.includes('cancel')) {
         throw new Error('Connection rejected by user');
       }
@@ -119,7 +132,101 @@ export async function connectWallet(type: WalletType): Promise<string | null> {
   }
 }
 
-export async function getWalletBalance(type: WalletType): Promise<number> {
+/**
+ * Send KAS using Kastle wallet
+ * Returns transaction ID if successful
+ */
+export async function sendKaspa(
+  type: WalletType,
+  toAddress: string,
+  amountKas: number,
+  payload?: string
+): Promise<string> {
+  if (typeof window === 'undefined') {
+    throw new Error('Window not available');
+  }
+
+  const sompi = kasToSompi(amountKas);
+
+  if (type === 'kastle') {
+    const provider = window.kastle;
+    if (!provider) {
+      throw new Error('Kastle wallet not found');
+    }
+
+    try {
+      console.log('[Trade] Sending tx via Kastle:', { toAddress, sompi, priorityFee: 0 });
+      const txid = await provider.sendKaspa(toAddress, sompi, {
+        priorityFee: 0,
+        payload: payload,
+      });
+      console.log('[Trade] Tx sent via Kastle:', txid);
+      return txid;
+    } catch (error) {
+      if (error instanceof Error) {
+        if (error.message.includes('rejected') || error.message.includes('cancel')) {
+          throw new Error('Transaction rejected by user');
+        }
+        throw error;
+      }
+      throw new Error('Failed to send transaction');
+    }
+  }
+
+  if (type === 'kasware') {
+    const provider = window.kasware;
+    if (!provider) {
+      throw new Error('KasWare wallet not found');
+    }
+
+    try {
+      console.log('[Trade] Sending tx via KasWare:', { toAddress, sompi, priorityFee: 0 });
+      const txid = await provider.sendKaspa(toAddress, sompi, {
+        priorityFee: 0,
+      });
+      console.log('[Trade] Tx sent via KasWare:', txid);
+      return txid;
+    } catch (error) {
+      if (error instanceof Error) {
+        if (error.message.includes('rejected') || error.message.includes('cancel')) {
+          throw new Error('Transaction rejected by user');
+        }
+        throw error;
+      }
+      throw new Error('Failed to send transaction');
+    }
+  }
+
+  throw new Error(`Wallet type ${type} does not support sendKaspa`);
+}
+
+/**
+ * Fetch balance from Kaspa API for an address
+ */
+export async function fetchAddressBalance(address: string): Promise<number> {
+  try {
+    // Determine API based on address prefix
+    const isTestnet = address.startsWith('kaspatest:');
+    const apiBase = isTestnet
+      ? 'https://api-tn10.kaspa.org'
+      : 'https://api.kaspa.org';
+
+    const response = await fetch(`${apiBase}/addresses/${address}/balance`);
+    if (!response.ok) {
+      console.error('Failed to fetch balance:', response.status);
+      return -1;
+    }
+
+    const data = await response.json();
+    // API returns balance in sompi
+    return sompiToKas(data.balance || 0);
+  } catch (error) {
+    console.error('Error fetching balance:', error);
+    return -1;
+  }
+}
+
+export async function getWalletBalance(type: WalletType, address?: string): Promise<number> {
   if (typeof window === 'undefined') return 0;
 
   try {
@@ -128,12 +235,18 @@ export async function getWalletBalance(type: WalletType): Promise<number> {
       if (!provider) return 0;
 
       const balance = await provider.getBalance();
-      // Balance is returned in sompi (1 KAS = 100,000,000 sompi)
-      return balance.total / 100_000_000;
+      return sompiToKas(balance.total);
     }
 
-    // Kastle doesn't have a getBalance method in the basic API
-    // Balance would need to be fetched from the platform
+    if (type === 'kastle') {
+      // Kastle doesn't expose a getBalance method directly
+      // Fetch from Kaspa API if address is provided
+      if (address) {
+        return await fetchAddressBalance(address);
+      }
+      return -1;
+    }
+
     return 0;
   } catch {
     return 0;
@@ -150,7 +263,6 @@ export async function getWalletNetwork(type: WalletType): Promise<string> {
       return await provider.getNetwork();
     }
 
-    // Kastle network can be checked via request method if needed
     return 'unknown';
   } catch {
     return 'unknown';
@@ -184,7 +296,6 @@ export function subscribeToWalletEvents(
       if (Array.isArray(accounts)) {
         callbacks.onAccountsChanged!(accounts as string[]);
       } else if (accounts && typeof accounts === 'object' && 'address' in accounts) {
-        // Kastle returns { address, publicKey }
         callbacks.onAccountsChanged!([(accounts as { address: string }).address]);
       }
     };
@@ -208,7 +319,6 @@ export function subscribeToWalletEvents(
     handlers.push(['balanceChanged', handler]);
   }
 
-  // Return cleanup function
   return () => {
     if (provider?.removeListener) {
       for (const [event, handler] of handlers) {

@@ -5,16 +5,20 @@ import { useWallet } from '@/lib/hooks/useWallet';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { Badge } from '@/components/ui/Badge';
 import { PositionCard } from '@/components/PositionCard';
 import { WalletModal } from '@/components/WalletModal';
-import { formatKas, truncateAddress } from '@/lib/utils';
+import { formatKas } from '@/lib/utils';
 
 export default function WalletPage() {
-  const { address, balance, positions, isConnected, refreshWallet, deposit } = useWallet();
+  const { address, balance, positions, isConnected, walletType, refreshWallet, deposit } = useWallet();
   const [showConnectModal, setShowConnectModal] = useState(false);
   const [depositAmount, setDepositAmount] = useState('');
   const [isDepositing, setIsDepositing] = useState(false);
   const [depositError, setDepositError] = useState('');
+
+  const isNonCustodial = walletType === 'kastle' || walletType === 'kasware';
+  const isDemo = walletType === 'demo';
 
   const handleDeposit = async () => {
     const amount = parseFloat(depositAmount);
@@ -65,7 +69,15 @@ export default function WalletPage() {
       {/* Wallet info */}
       <Card>
         <CardHeader>
-          <h1 className="text-xl font-bold">Wallet</h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-xl font-bold">Wallet</h1>
+            {isNonCustodial && (
+              <Badge variant="success">Non-Custodial</Badge>
+            )}
+            {isDemo && (
+              <Badge variant="warning">Demo Mode</Badge>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -76,35 +88,55 @@ export default function WalletPage() {
               </div>
             </div>
             <div className="text-right">
-              <div className="text-sm text-muted-foreground mb-1">Balance</div>
-              <div className="text-2xl font-bold">{formatKas(balance)}</div>
+              <div className="text-sm text-muted-foreground mb-1">
+                {isNonCustodial ? 'On-Chain Balance' : 'Platform Balance'}
+              </div>
+              <div className="text-2xl font-bold">
+                {balance === -1 ? (
+                  <span className="text-muted-foreground text-sm">Check wallet</span>
+                ) : (
+                  formatKas(balance)
+                )}
+              </div>
             </div>
           </div>
 
-          <hr className="border-border" />
+          {isNonCustodial && (
+            <div className="bg-success/10 rounded-lg p-3 text-sm">
+              <p className="text-success font-medium mb-1">Non-Custodial Mode</p>
+              <p className="text-muted-foreground">
+                Trades are executed directly from your wallet. Each BUY will prompt you to sign a transaction.
+              </p>
+            </div>
+          )}
 
-          <div>
-            <div className="text-sm text-muted-foreground mb-2">
-              Deposit KAS (Demo)
-            </div>
-            <div className="flex gap-2">
-              <Input
-                type="number"
-                placeholder="Amount"
-                value={depositAmount}
-                onChange={(e) => setDepositAmount(e.target.value)}
-                suffix="KAS"
-                error={depositError}
-              />
-              <Button
-                onClick={handleDeposit}
-                isLoading={isDepositing}
-                disabled={!depositAmount}
-              >
-                Deposit
-              </Button>
-            </div>
-          </div>
+          {isDemo && (
+            <>
+              <hr className="border-border" />
+              <div>
+                <div className="text-sm text-muted-foreground mb-2">
+                  Deposit KAS (Demo)
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    placeholder="Amount"
+                    value={depositAmount}
+                    onChange={(e) => setDepositAmount(e.target.value)}
+                    suffix="KAS"
+                    error={depositError}
+                  />
+                  <Button
+                    onClick={handleDeposit}
+                    isLoading={isDepositing}
+                    disabled={!depositAmount}
+                  >
+                    Deposit
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 

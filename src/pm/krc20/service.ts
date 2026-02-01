@@ -114,7 +114,7 @@ export function mint(
   };
   addKRC20MintEvent(mintEvent);
 
-  console.log(`[KRC20] Minted ${amount.toFixed(4)} ${ticker} to ${recipient.slice(0, 15)}...`);
+  console.log(`[KRC20] Minted ${amount.toFixed(4)} ${ticker} to ${recipient}`);
 
   return {
     success: true,
@@ -176,7 +176,7 @@ export function burn(
   };
   addKRC20BurnEvent(burnEvent);
 
-  console.log(`[KRC20] Burned ${amount.toFixed(4)} ${ticker} from ${from.slice(0, 15)}...`);
+  console.log(`[KRC20] Burned ${amount.toFixed(4)} ${ticker} from ${from}`);
 
   return {
     success: true,

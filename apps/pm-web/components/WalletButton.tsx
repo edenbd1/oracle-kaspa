@@ -24,7 +24,7 @@ export function WalletButton() {
         <div className="text-right">
           <div className="text-sm font-medium text-foreground flex items-center gap-1 justify-end">
             {icon && <span>{icon}</span>}
-            {formatKas(balance)}
+            {balance === -1 ? 'Check wallet' : formatKas(balance)}
           </div>
           <div className="text-xs text-muted-foreground">{truncateAddress(address)}</div>
         </div>

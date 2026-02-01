@@ -260,12 +260,24 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       kasAmount?: number;
       sharesAmount?: number;
       maxSlippage?: number;
+      txid?: string; // For non-custodial trades
     };
 
     if (!body.address || !body.marketId || !body.side || !body.action) {
       sendJson(res, 400, { error: 'Required: address, marketId, side, action' });
       return;
     }
+
+    // Log trade request
+    console.log(`[PM API] Trade request:`, {
+      address: body.address?.slice(0, 20) + '...',
+      marketId: body.marketId,
+      side: body.side,
+      action: body.action,
+      kasAmount: body.kasAmount,
+      txid: body.txid || 'NOT PROVIDED',
+      maxSlippage: body.maxSlippage
+    });
 
     const result = executeTrade({
       wallet: body.address,
@@ -274,7 +286,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       action: body.action,
       kasAmount: body.kasAmount,
       sharesAmount: body.sharesAmount,
-      maxSlippage: body.maxSlippage
+      maxSlippage: body.maxSlippage,
+      txid: body.txid
     });
 
     if (!result.success) {
