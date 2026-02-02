@@ -24,7 +24,8 @@ import { priceYes, priceNo } from '../math/lmsr.js';
 import { quoteTrade, executeTrade, getMarketPrices, TradeAction } from '../engine/trading.js';
 import { syncAndResolve, verifyOracleTx } from '../engine/resolver.js';
 import { formatMarketLabel } from '../models/index.js';
-import { balanceOf, redeem as redeemToken } from '../krc20/index.js';
+import { balanceOf, redeem as redeemToken, getAllBalances as getKRC20Holdings } from '../krc20/index.js';
+import * as indexer from '../krc20/indexer.js';
 
 const PORT = parseInt(process.env.PM_API_PORT || '3001', 10);
 
@@ -279,7 +280,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       maxSlippage: body.maxSlippage
     });
 
-    const result = executeTrade({
+    const result = await executeTrade({
       wallet: body.address,
       marketId: body.marketId,
       side: body.side,
@@ -358,6 +359,62 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       balance_kas: balance?.balance_kas ?? 0,
       deposited_kas: balance?.deposited_kas ?? 0,
       positions: enrichedPositions
+    });
+    return;
+  }
+
+  // GET /pm/wallet/:address/krc20 - Get on-chain KRC-20 holdings
+  const walletKrc20Match = url.match(/^\/pm\/(wallet|user)\/([^/]+)\/krc20$/);
+  if (walletKrc20Match && method === 'GET') {
+    const wallet = decodeURIComponent(walletKrc20Match[2]);
+
+    // Fetch from Kasplex indexer
+    const holdings = await indexer.getAllKRC20Balances(wallet);
+
+    // Get our PM tokens info for context
+    const allTokens = getAllKRC20Tokens();
+    const pmTickers = new Set(allTokens.map(t => t.ticker));
+
+    // Enrich with PM token info
+    const enrichedHoldings = holdings.map(h => {
+      const pmToken = allTokens.find(t => t.ticker === h.tick);
+      return {
+        ticker: h.tick,
+        balance: h.balance,
+        decimals: h.dec,
+        locked: h.locked || '0',
+        is_pm_token: pmTickers.has(h.tick),
+        pm_token_info: pmToken ? {
+          side: pmToken.side,
+          market_id: pmToken.market_id,
+          display_name: pmToken.display_name,
+          asset: pmToken.asset,
+          threshold: pmToken.threshold
+        } : null
+      };
+    });
+
+    // Also get local position-based balances for comparison
+    const positions = getPositionsForUser(wallet);
+    const localBalances = positions.flatMap(pos => {
+      const market = getMarket(pos.market_id);
+      const result: { ticker: string; shares: number; side: string }[] = [];
+      if (market?.yes_token_ticker && pos.yes_shares > 0) {
+        result.push({ ticker: market.yes_token_ticker, shares: pos.yes_shares, side: 'YES' });
+      }
+      if (market?.no_token_ticker && pos.no_shares > 0) {
+        result.push({ ticker: market.no_token_ticker, shares: pos.no_shares, side: 'NO' });
+      }
+      return result;
+    });
+
+    sendJson(res, 200, {
+      wallet,
+      on_chain_holdings: enrichedHoldings,
+      local_balances: localBalances,
+      note: enrichedHoldings.length === 0 && localBalances.length > 0
+        ? 'Indexer may have delay. Local balances show pending tokens.'
+        : null
     });
     return;
   }
@@ -499,7 +556,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     }
 
     // Get user's balance of this token
-    const tokenBalance = balanceOf(body.ticker, body.address);
+    const tokenBalance = await balanceOf(body.ticker, body.address);
     const amountToRedeem = body.amount ?? tokenBalance;
 
     if (amountToRedeem <= 0) {
@@ -513,7 +570,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     }
 
     // Perform redemption
-    const result = redeemToken(body.ticker, body.address, amountToRedeem, market.resolved_txid || '');
+    const result = await redeemToken(body.ticker, body.address, amountToRedeem, market.resolved_txid || '');
 
     if (!result.success) {
       sendJson(res, 400, { error: result.error || 'Redemption failed' });
@@ -541,6 +598,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       'POST /pm/quote',
       'POST /pm/trade',
       'GET  /pm/wallet/:address',
+      'GET  /pm/wallet/:address/krc20',
       'POST /pm/deposit',
       'POST /pm/sync',
       'GET  /pm/verify/:txid',

@@ -16,6 +16,8 @@
     "pm": "tsx src/pm/index.ts",
     "pm:seed": "tsx scripts/seed-markets.ts",
     "pm:seed:reset": "tsx scripts/seed-markets.ts --reset",
+    "pm:seed:real": "USE_REAL_KRC20=true tsx scripts/seed-markets-real.ts",
+    "pm:seed:real:single": "USE_REAL_KRC20=true tsx scripts/seed-markets-real.ts --single",
     "pm:simulate": "tsx scripts/simulate-trades.ts",
     "pm:serve": "npx serve public -l 8080",
     "pm:web": "npm run dev --prefix apps/pm-web",
@@ -24,6 +26,7 @@
   "dependencies": {
     "cbor-x": "^1.5.0",
     "dotenv": "^16.0.0",
+    "kasplexbuilder": "github:KaffinPX/KasplexBuilder",
     "websocket": "^1.0.34"
   },
   "devDependencies": {

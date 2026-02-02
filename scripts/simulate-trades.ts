@@ -111,15 +111,18 @@ for (const sim of simTrades) {
   // Get prices after
   const pricesAfter = getMarketPrices(market.id);
 
-  if (result.success) {
+  // Note: executeTrade is now async
+  const tradeResult = await result;
+
+  if (tradeResult.success) {
     const dir = market.direction === '>=' ? '≥' : '≤';
     console.log(`${sim.trader.name} buys ${sim.side} on BTC ${dir} $${market.threshold_price.toLocaleString()}`);
-    console.log(`  Amount: ${sim.amount} KAS → ${result.quote!.shares.toFixed(2)} shares`);
+    console.log(`  Amount: ${sim.amount} KAS → ${tradeResult.quote!.shares.toFixed(2)} shares`);
     console.log(`  Price: ${formatPrice(pricesBefore!.yes)} → ${formatPrice(pricesAfter!.yes)} YES`);
-    console.log(`  Balance: ${result.newBalance?.toFixed(2)} KAS remaining`);
+    console.log(`  Balance: ${tradeResult.newBalance?.toFixed(2)} KAS remaining`);
     console.log('');
   } else {
-    console.log(`FAILED: ${sim.trader.name} on market ${sim.marketIndex}: ${result.error}`);
+    console.log(`FAILED: ${sim.trader.name} on market ${sim.marketIndex}: ${tradeResult.error}`);
   }
 }
 

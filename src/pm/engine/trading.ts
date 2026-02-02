@@ -115,14 +115,14 @@ export function quoteTrade(
 /**
  * Execute a buy trade.
  */
-function executeBuy(
+async function executeBuy(
   market: Market,
   wallet: string,
   side: 'YES' | 'NO',
   kasAmount: number,
   maxSlippage: number,
   txid?: string
-): TradeResult {
+): Promise<TradeResult> {
   // For non-custodial trades, we trust the txid (in production, verify on-chain)
   const isNonCustodial = !!txid;
 
@@ -209,12 +209,43 @@ function executeBuy(
   let tokenMinted: TradeResult['tokenMinted'] = undefined;
   const tokenTicker = side === 'YES' ? market.yes_token_ticker : market.no_token_ticker;
   if (tokenTicker) {
-    const mintResult = mint(tokenTicker, wallet, quote.shares, trade.id);
+    const mintResult = await mint(tokenTicker, wallet, quote.shares, trade.id);
     if (mintResult.success) {
       tokenMinted = {
         ticker: tokenTicker,
         amount: quote.shares,
         txid: mintResult.txid
+      };
+    } else {
+      // Mint failed - rollback the trade state changes
+      console.error(`[Trade] Mint failed, rolling back trade: ${mintResult.error}`);
+
+      // Rollback balance (refund the KAS)
+      if (!isNonCustodial) {
+        balance.balance_kas += kasAmount;
+        upsertBalance(balance);
+      }
+
+      // Rollback market state
+      updateMarket(market.id, {
+        q_yes: market.q_yes,
+        q_no: market.q_no,
+        volume: market.volume,
+        trades_count: market.trades_count || 0
+      });
+
+      // Rollback position
+      if (side === 'YES') {
+        position.yes_shares -= quote.shares;
+      } else {
+        position.no_shares -= quote.shares;
+      }
+      position.total_cost -= kasAmount;
+      upsertPosition(position);
+
+      return {
+        success: false,
+        error: `Mint failed: ${mintResult.error}`
       };
     }
   }
@@ -238,13 +269,13 @@ function executeBuy(
 /**
  * Execute a sell trade.
  */
-function executeSell(
+async function executeSell(
   market: Market,
   wallet: string,
   side: 'YES' | 'NO',
   sharesAmount: number,
   maxSlippage: number
-): TradeResult {
+): Promise<TradeResult> {
   // Validate position
   const position = getPosition(wallet, market.id);
   const availableShares = side === 'YES' ? (position?.yes_shares || 0) : (position?.no_shares || 0);
@@ -312,7 +343,7 @@ function executeSell(
   let tokenBurned: TradeResult['tokenBurned'] = undefined;
   const tokenTicker = side === 'YES' ? market.yes_token_ticker : market.no_token_ticker;
   if (tokenTicker) {
-    const burnResult = burn(tokenTicker, wallet, sharesAmount, trade.id);
+    const burnResult = await burn(tokenTicker, wallet, sharesAmount, trade.id);
     if (burnResult.success) {
       tokenBurned = {
         ticker: tokenTicker,
@@ -341,7 +372,7 @@ function executeSell(
 /**
  * Execute a trade (buy or sell).
  */
-export function executeTrade(request: TradeRequest): TradeResult {
+export async function executeTrade(request: TradeRequest): Promise<TradeResult> {
   const { wallet, marketId, side, action, kasAmount, sharesAmount, maxSlippage = 0.1, txid } = request;
 
   // Validate market
@@ -357,12 +388,12 @@ export function executeTrade(request: TradeRequest): TradeResult {
     if (!kasAmount || kasAmount <= 0) {
       return { success: false, error: 'kasAmount is required for BUY' };
     }
-    return executeBuy(market, wallet, side, kasAmount, maxSlippage, txid);
+    return await executeBuy(market, wallet, side, kasAmount, maxSlippage, txid);
   } else {
     if (!sharesAmount || sharesAmount <= 0) {
       return { success: false, error: 'sharesAmount is required for SELL' };
     }
-    return executeSell(market, wallet, side, sharesAmount, maxSlippage);
+    return await executeSell(market, wallet, side, sharesAmount, maxSlippage);
   }
 }
 

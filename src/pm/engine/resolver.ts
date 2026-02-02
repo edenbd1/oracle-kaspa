@@ -126,7 +126,7 @@ async function resolveMarket(
     // Redeem winning tokens
     if (winningShares > 0 && winningTicker) {
       // Redeem tokens - this burns them and records the event
-      redeem(winningTicker, position.user_wallet, winningShares, resolutionTxid);
+      await redeem(winningTicker, position.user_wallet, winningShares, resolutionTxid);
 
       // Credit KAS balance
       let balance = getBalance(position.user_wallet);
@@ -146,7 +146,7 @@ async function resolveMarket(
 
     // Burn losing tokens (worth 0)
     if (losingShares > 0 && losingTicker) {
-      burnLosing(losingTicker, position.user_wallet, losingShares, resolutionTxid);
+      await burnLosing(losingTicker, position.user_wallet, losingShares, resolutionTxid);
       console.log(`[Resolver] Burned ${losingShares} losing ${losingTicker} from ${position.user_wallet}`);
     }
   }

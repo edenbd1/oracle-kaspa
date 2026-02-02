@@ -375,6 +375,13 @@ export function getKRC20TokenHistory(ticker: string): Array<KRC20MintEvent | KRC
 
 // ============ Seed Data ============
 
+/**
+ * Convert a number index to a letter (0 -> A, 1 -> B, etc.)
+ */
+function indexToLetter(index: number): string {
+  return String.fromCharCode(65 + (index % 26));
+}
+
 export function seedDemoData(): void {
   // Create demo event
   const deadline = new Date('2026-03-01T00:00:00Z').getTime();
@@ -391,8 +398,10 @@ export function seedDemoData(): void {
   const liquidityB = 200; // Higher liquidity for smoother price curves
   const feeBps = 100; // 1% fee
 
-  for (const threshold of thresholds) {
-    const market = createMarket(event.id, threshold, '>=', liquidityB, feeBps, event.asset);
+  for (let i = 0; i < thresholds.length; i++) {
+    const threshold = thresholds[i];
+    const marketIndex = indexToLetter(i); // A, B, C, D, E, F, G, H
+    const market = createMarket(event.id, threshold, '>=', liquidityB, feeBps, event.asset, marketIndex);
     addMarket(market);
     // Initialize price history with starting point
     addPricePoint(market.id, 0.5);
@@ -408,10 +417,12 @@ export function seedDemoData(): void {
 
     const yesToken: KRC20TokenInfo = {
       ticker: yesTicker,
+      display_name: `YES ${event.asset} $${threshold.toLocaleString()}`,
       market_id: market.id,
       side: 'YES',
       asset: event.asset,
       threshold: market.threshold_price,
+      market_index: marketIndex,
       total_supply: 0,
       decimals: 8,
       deployed_at: timestamp,
@@ -420,10 +431,12 @@ export function seedDemoData(): void {
 
     const noToken: KRC20TokenInfo = {
       ticker: noTicker,
+      display_name: `NO ${event.asset} $${threshold.toLocaleString()}`,
       market_id: market.id,
       side: 'NO',
       asset: event.asset,
       threshold: market.threshold_price,
+      market_index: marketIndex,
       total_supply: 0,
       decimals: 8,
       deployed_at: timestamp,

@@ -103,6 +103,18 @@ export function createEvent(
 
 /**
  * Create a new market for an event
+ *
+ * Token tickers use the 6-char format with month: Y{ASSET}{MONTH}{INDEX}
+ * Example: YBTCCA = YES BTC, March (C), market A
+ *
+ * @param eventId - Parent event ID
+ * @param thresholdPrice - Price threshold for the market
+ * @param direction - '>=' or '<='
+ * @param liquidityB - LMSR liquidity parameter
+ * @param feeBps - Fee in basis points
+ * @param asset - Asset code (BTC, ETH, KAS)
+ * @param marketIndex - Market index letter (A, B, C...)
+ * @param eventDeadline - Event deadline timestamp (used to derive month letter)
  */
 export function createMarket(
   eventId: string,
@@ -110,11 +122,21 @@ export function createMarket(
   direction: '>=' | '<=',
   liquidityB: number = 200, // Default liquidity
   feeBps: number = 100, // Default 1% fee
-  asset: string = 'BTC' // Asset for token ticker generation
+  asset: string = 'BTC', // Asset for token ticker generation
+  marketIndex: string = 'A', // Market index (A, B, C...)
+  eventDeadline?: number // Event deadline for month letter derivation
 ): Market {
-  // Generate token tickers
-  const yesTicker = `YES_${asset.toUpperCase()}_${Math.floor(thresholdPrice)}`;
-  const noTicker = `NO_${asset.toUpperCase()}_${Math.floor(thresholdPrice)}`;
+  // Generate KRC-20 compliant token tickers (6 uppercase letters)
+  // Format: {Y|N}{ASSET}{MONTH}{INDEX} e.g., YBTCCA
+  const assetCode = asset.toUpperCase().slice(0, 3);
+  const indexChar = marketIndex.toUpperCase().slice(0, 1);
+
+  // Derive month letter from event deadline (A=Jan, B=Feb, ..., L=Dec)
+  const eventDate = eventDeadline ? new Date(eventDeadline) : new Date();
+  const monthLetter = String.fromCharCode(65 + eventDate.getMonth()); // 0-11 → A-L
+
+  const yesTicker = `Y${assetCode}${monthLetter}${indexChar}`; // e.g., YBTCCA
+  const noTicker = `N${assetCode}${monthLetter}${indexChar}`;   // e.g., NBTCCA
 
   return {
     id: `mkt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,

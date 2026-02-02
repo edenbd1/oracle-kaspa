@@ -53,10 +53,12 @@ interface Market {
 
 interface KRC20TokenInfo {
   ticker: string;
+  display_name: string;
   market_id: string;
   side: 'YES' | 'NO';
   asset: string;
   threshold: number;
+  market_index: string;
   total_supply: number;
   decimals: number;
   deployed_at: number;
@@ -87,8 +89,27 @@ function generateMockTxid(prefix: string): string {
   return combined.slice(0, 64).replace(/[^a-f0-9]/g, '0');
 }
 
-function generateTokenTicker(asset: string, threshold: number, side: 'YES' | 'NO'): string {
-  return `${side}_${asset.toUpperCase()}_${Math.floor(threshold)}`;
+/**
+ * Convert a number index to a letter (0 -> A, 1 -> B, etc.)
+ */
+function indexToLetter(index: number): string {
+  return String.fromCharCode(65 + (index % 26));
+}
+
+/**
+ * Generate a KRC-20 compliant ticker (4-6 letters only)
+ * Format: {SIDE}{ASSET}{INDEX}
+ * Example: YBTCA, NBTCA
+ */
+function generateTokenTicker(asset: string, marketIndex: string, side: 'YES' | 'NO'): string {
+  const sideChar = side === 'YES' ? 'Y' : 'N';
+  const assetCode = asset.toUpperCase().slice(0, 3);
+  const indexChar = marketIndex.toUpperCase().slice(0, 1);
+  return `${sideChar}${assetCode}${indexChar}`;
+}
+
+function generateDisplayName(side: 'YES' | 'NO', asset: string, threshold: number): string {
+  return `${side} ${asset} $${threshold.toLocaleString()}`;
 }
 
 async function migrate() {
@@ -120,67 +141,87 @@ async function migrate() {
   let migratedCount = 0;
   let tokensCreated = 0;
 
-  // Process each market
+  // Group markets by asset to assign proper indexes
+  const marketsByAsset = new Map<string, Market[]>();
   for (const market of store.markets) {
     const event = eventMap.get(market.event_id);
     const asset = event?.asset || 'BTC';
-
-    // Check if market already has token tickers
-    if (market.yes_token_ticker && market.no_token_ticker) {
-      console.log(`[Migration] Market ${market.id} already has tokens. Skipping.`);
-      continue;
+    if (!marketsByAsset.has(asset)) {
+      marketsByAsset.set(asset, []);
     }
+    marketsByAsset.get(asset)!.push(market);
+  }
 
-    // Generate token tickers
-    const yesTicker = generateTokenTicker(asset, market.threshold_price, 'YES');
-    const noTicker = generateTokenTicker(asset, market.threshold_price, 'NO');
+  // Process each market
+  for (const [asset, markets] of marketsByAsset) {
+    // Sort markets by creation time to assign consistent indexes
+    markets.sort((a, b) => a.created_at - b.created_at);
 
-    // Update market
-    market.yes_token_ticker = yesTicker;
-    market.no_token_ticker = noTicker;
-    market.tokens_deployed_at = market.created_at;
+    for (let i = 0; i < markets.length; i++) {
+      const market = markets[i];
+      const marketIndex = indexToLetter(i);
 
-    migratedCount++;
+      // Check if market already has token tickers in new format
+      if (market.yes_token_ticker && /^[YN][A-Z]{3}[A-Z]$/.test(market.yes_token_ticker)) {
+        console.log(`[Migration] Market ${market.id} already has new format tokens. Skipping.`);
+        continue;
+      }
 
-    // Check if tokens already exist
-    const existingYes = store.krc20Tokens.find(t => t.ticker === yesTicker);
-    const existingNo = store.krc20Tokens.find(t => t.ticker === noTicker);
+      // Generate token tickers in new KRC-20 compliant format
+      const yesTicker = generateTokenTicker(asset, marketIndex, 'YES');
+      const noTicker = generateTokenTicker(asset, marketIndex, 'NO');
 
-    if (!existingYes) {
-      // Create YES token
-      const yesToken: KRC20TokenInfo = {
-        ticker: yesTicker,
-        market_id: market.id,
-        side: 'YES',
-        asset,
-        threshold: market.threshold_price,
-        total_supply: market.q_yes, // Use existing outstanding shares
-        decimals: 8,
-        deployed_at: market.created_at,
-        deployed_txid: generateMockTxid('migrate-yes')
-      };
-      store.krc20Tokens.push(yesToken);
-      tokensCreated++;
+      // Update market
+      market.yes_token_ticker = yesTicker;
+      market.no_token_ticker = noTicker;
+      market.tokens_deployed_at = market.created_at;
+
+      migratedCount++;
+
+      // Check if tokens already exist
+      const existingYes = store.krc20Tokens.find(t => t.ticker === yesTicker);
+      const existingNo = store.krc20Tokens.find(t => t.ticker === noTicker);
+
+      if (!existingYes) {
+        // Create YES token
+        const yesToken: KRC20TokenInfo = {
+          ticker: yesTicker,
+          display_name: generateDisplayName('YES', asset, market.threshold_price),
+          market_id: market.id,
+          side: 'YES',
+          asset,
+          threshold: market.threshold_price,
+          market_index: marketIndex,
+          total_supply: market.q_yes, // Use existing outstanding shares
+          decimals: 8,
+          deployed_at: market.created_at,
+          deployed_txid: generateMockTxid('migrate-yes')
+        };
+        store.krc20Tokens.push(yesToken);
+        tokensCreated++;
+      }
+
+      if (!existingNo) {
+        // Create NO token
+        const noToken: KRC20TokenInfo = {
+          ticker: noTicker,
+          display_name: generateDisplayName('NO', asset, market.threshold_price),
+          market_id: market.id,
+          side: 'NO',
+          asset,
+          threshold: market.threshold_price,
+          market_index: marketIndex,
+          total_supply: market.q_no, // Use existing outstanding shares
+          decimals: 8,
+          deployed_at: market.created_at,
+          deployed_txid: generateMockTxid('migrate-no')
+        };
+        store.krc20Tokens.push(noToken);
+        tokensCreated++;
+      }
+
+      console.log(`[Migration] Migrated market ${market.id}: ${yesTicker}, ${noTicker}`);
     }
-
-    if (!existingNo) {
-      // Create NO token
-      const noToken: KRC20TokenInfo = {
-        ticker: noTicker,
-        market_id: market.id,
-        side: 'NO',
-        asset,
-        threshold: market.threshold_price,
-        total_supply: market.q_no, // Use existing outstanding shares
-        decimals: 8,
-        deployed_at: market.created_at,
-        deployed_txid: generateMockTxid('migrate-no')
-      };
-      store.krc20Tokens.push(noToken);
-      tokensCreated++;
-    }
-
-    console.log(`[Migration] Migrated market ${market.id}: ${yesTicker}, ${noTicker}`);
   }
 
   // Save updated store

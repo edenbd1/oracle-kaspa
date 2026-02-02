@@ -1,7 +1,8 @@
 /**
  * KRC20 Module Entry Point
  *
- * Mock KRC20 token layer for prediction market shares.
+ * Supports both mock (in-memory) and real (on-chain Kasplex) KRC-20 tokens.
+ * Set USE_REAL_KRC20=true in environment to enable real on-chain tokens.
  */
 
 // Types
@@ -15,7 +16,17 @@ export type {
   MintResult,
   BurnResult,
   RedeemResult,
-  TokenPair
+  TokenPair,
+  // New inscription types
+  IndexerResponse,
+  TokenBalance,
+  TokenInfo,
+  KRC20Operation,
+  DeployData,
+  MintData,
+  TransferData,
+  InscriptionResult,
+  KasplexConfig
 } from './types.js';
 
 // Utilities
@@ -26,10 +37,13 @@ export {
   generateEventId,
   getOppositeTicker,
   isValidTicker,
-  formatTickerDisplay
+  formatTickerDisplay,
+  generateDisplayName,
+  indexToLetter,
+  letterToIndex
 } from './utils.js';
 
-// Service
+// Service (main API)
 export {
   deployMarketTokens,
   mint,
@@ -37,6 +51,18 @@ export {
   redeem,
   burnLosing,
   balanceOf,
+  getAllBalances,
   getToken,
-  getMarketTokens
+  getMarketTokens,
+  getNextMarketIndex,
+  isRealMode,
+  isRealModeAvailable,
+  MINT_FEE_KAS,
+  DEPLOY_FEE_KAS
 } from './service.js';
+
+// Kasplex client (for direct inscription operations)
+export * as kasplex from './kasplex.js';
+
+// Indexer client (for querying on-chain data)
+export * as indexer from './indexer.js';
