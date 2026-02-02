@@ -164,7 +164,7 @@ export function TradePanel({ market, onTradeComplete }: TradePanelProps) {
         });
 
         console.log('[TradePanel] Sending KAS via wallet...');
-        // Send KAS to platform address
+        // User pays only the trade amount - platform pays mint fee internally
         txid = await sendKaspa(walletType, PLATFORM_ADDRESS, numAmount, payload);
         console.log('[TradePanel] Transaction sent, txid:', txid);
 
@@ -406,7 +406,7 @@ export function TradePanel({ market, onTradeComplete }: TradePanelProps) {
                   <span className="font-medium">{formatCents(quote.avgPrice)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Fee:</span>
+                  <span className="text-muted-foreground">Trading fee:</span>
                   <span>{formatKas(quote.fee)}</span>
                 </div>
                 <div className="flex justify-between">
