@@ -6,7 +6,8 @@ COPY package*.json ./
 
 RUN apt-get update && apt-get install -y curl unzip && rm -rf /var/lib/apt/lists/*
 
-RUN npm ci
+# Install ALL deps including devDependencies (tsx, typescript needed at runtime)
+RUN npm ci --include=dev
 
 # kaspa-wasm setup (may fail in some environments — anchoring becomes optional)
 RUN npm run setup:kaspa || echo "kaspa-wasm setup skipped"
