@@ -11,7 +11,7 @@ import { startSyncLoop, stopSyncLoop } from './engine/resolver.js';
 
 const SYNC_INTERVAL_MS = parseInt(process.env.PM_SYNC_INTERVAL || '5000', 10);
 
-async function main() {
+export async function main() {
   console.log('Starting Kaspa Prediction Market...\n');
 
   // Load or seed data
@@ -46,4 +46,7 @@ async function main() {
   console.log(`  Sync: Every ${SYNC_INTERVAL_MS}ms`);
 }
 
-main().catch(console.error);
+// Allow running standalone
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch(console.error);
+}

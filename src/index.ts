@@ -12,9 +12,10 @@ function jitter(seconds: number): number {
   return (Math.random() * 2 - 1) * seconds * 1000; // ±seconds in ms
 }
 
-async function main() {
+export async function main() {
   const config = loadConfig();
   const anchor = new KaspaAnchor();
+  let anchorConnected = false;
 
   console.log('Starting Kaspa Spot Oracle...');
   console.log(`Network: ${config.network}`);
@@ -24,18 +25,27 @@ async function main() {
   initCollector(config);
 
   const privateKey = process.env.KASPA_PRIVATE_KEY;
-  if (!privateKey) {
-    console.error('KASPA_PRIVATE_KEY environment variable is required');
-    process.exit(1);
-  }
+  // Use env var if explicitly set (even if empty → use Resolver), otherwise fall back to config
+  const rpcUrl = process.env.KASPA_RPC_URL !== undefined ? process.env.KASPA_RPC_URL : config.rpcUrl;
 
-  await anchor.connect(config.rpcUrl, privateKey, config.network);
+  if (!privateKey) {
+    console.warn('KASPA_PRIVATE_KEY not set — running without on-chain anchoring');
+  } else {
+    try {
+      // If rpcUrl is empty/undefined, KaspaAnchor uses public Resolver (auto-discovery)
+      await anchor.connect(rpcUrl || undefined, privateKey, config.network);
+      anchorConnected = true;
+      console.log('Kaspa connected — on-chain anchoring enabled');
+    } catch (err) {
+      console.warn('Failed to connect to Kaspa — running without on-chain anchoring:', err);
+    }
+  }
 
   // Initialize oracle state
   updateOracleState({ network: config.network });
 
   // Start API server for bundle access (with anchor reference for health checks)
-  setAnchor(anchor);
+  if (anchorConnected) setAnchor(anchor);
   startApiServer();
 
   async function tick() {
@@ -60,21 +70,25 @@ async function main() {
     const h = hash.slice(0, 16);
     console.log(`  Bundle: ${h}...`);
 
-    // 4. Anchor if OK
+    // 4. Anchor if OK and connected
     let txId: string | null = null;
     if (index.status === 'OK') {
-      // Payload contains only: d, h, n, p (alphabetically sorted for deterministic CBOR)
-      const payload: AnchorPayload = {
-        d: Math.round(index.dispersion * 10000) / 10000,
-        h,
-        n: index.num_sources,
-        p: Math.round(index.price * 100) / 100,
-      };
-      txId = await anchor.anchor(payload);
-      if (txId) {
-        console.log(`  TX: ${txId}`);
+      if (anchorConnected) {
+        // Payload contains only: d, h, n, p (alphabetically sorted for deterministic CBOR)
+        const payload: AnchorPayload = {
+          d: Math.round(index.dispersion * 10000) / 10000,
+          h,
+          n: index.num_sources,
+          p: Math.round(index.price * 100) / 100,
+        };
+        txId = await anchor.anchor(payload);
+        if (txId) {
+          console.log(`  TX: ${txId}`);
+        } else {
+          console.log(`  TX: FAILED`);
+        }
       } else {
-        console.log(`  TX: FAILED`);
+        console.log(`  TX: skipped (no RPC connection)`);
       }
     } else {
       console.log(`  SKIPPED (${index.status})`);
@@ -82,9 +96,7 @@ async function main() {
 
     // 5. Store bundle with txid and update latest
     storeBundle(bundle, hash, txId || undefined);
-    if (txId) {
-      updateLatest(hash, txId);
-    }
+    updateLatest(hash, txId);
 
     // 6. Update oracle state for health endpoint
     updateOracleState({
@@ -106,14 +118,14 @@ async function main() {
 
   // Handle graceful shutdown
   process.on('SIGINT', async () => {
-    console.log('\nShutting down...');
-    await anchor.disconnect();
+    console.log('\n[Oracle] Shutting down...');
+    if (anchorConnected) await anchor.disconnect();
     process.exit(0);
   });
 
   process.on('SIGTERM', async () => {
-    console.log('\nShutting down...');
-    await anchor.disconnect();
+    console.log('\n[Oracle] Shutting down...');
+    if (anchorConnected) await anchor.disconnect();
     process.exit(0);
   });
 
@@ -121,4 +133,7 @@ async function main() {
   tick();
 }
 
-main().catch(console.error);
+// Allow running standalone
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch(console.error);
+}

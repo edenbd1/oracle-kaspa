@@ -36,17 +36,28 @@ export class KaspaAnchor {
   private networkId: string = 'testnet-10';
   private kaspaModule: typeof import('kaspa-wasm') | null = null;
 
-  async connect(rpcUrl: string, privateKeyHex: string, networkId: string = 'testnet-10'): Promise<void> {
+  async connect(rpcUrl: string | undefined, privateKeyHex: string, networkId: string = 'testnet-10'): Promise<void> {
     // Dynamic import to handle WASM loading
     const kaspa = await import('kaspa-wasm');
     this.kaspaModule = kaspa;
     this.networkId = networkId;
 
-    this.rpc = new kaspa.RpcClient({
-      url: rpcUrl,
-      encoding: kaspa.Encoding.Borsh,
-      networkId
-    });
+    if (rpcUrl) {
+      // Direct RPC URL (local node)
+      this.rpc = new kaspa.RpcClient({
+        url: rpcUrl,
+        encoding: kaspa.Encoding.Borsh,
+        networkId
+      });
+      console.log(`Connecting to Kaspa RPC: ${rpcUrl}`);
+    } else {
+      // Public node network via Resolver (auto-discovery + failover)
+      this.rpc = new kaspa.RpcClient({
+        resolver: new kaspa.Resolver(),
+        networkId
+      });
+      console.log(`Connecting to Kaspa via public Resolver (${networkId})`);
+    }
     await this.rpc.connect();
 
     this.privateKey = new kaspa.PrivateKey(privateKeyHex);
