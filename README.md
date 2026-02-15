@@ -1,125 +1,194 @@
-# Kaspa Spot Oracle
+# Threshold - Prediction Markets on Kaspa
 
-A TypeScript/Node.js oracle that fetches BTC/USD prices from aggregator APIs, calculates a median-based spot index, and anchors results to Kaspa testnet-11 via CBOR-encoded transaction payloads.
+Threshold is a decentralized prediction market platform built on the Kaspa blockchain. It combines a real-time price oracle with binary outcome markets, powered by KRC-20 tokens and LMSR automated market making.
 
-## Features
+**Live demo**: [threshold-kaspa.vercel.app](https://threshold-kaspa.vercel.app)
 
-- **Multi-source price aggregation**: CoinGecko + CoinMarketCap
-- **Median-based index**: Outlier filtering with 1% threshold
-- **Quorum validation**: Minimum 2 valid sources required
-- **CBOR payload encoding**: Compact on-chain data format
-- **Proof archival**: Local JSON bundles with SHA-256 hashes
+## How it works
 
-## Prerequisites
+1. **Oracle** fetches BTC, ETH, and KAS prices from CoinGecko + CoinMarketCap every 15 seconds
+2. **Aggregator** computes a median-based spot index with outlier filtering
+3. **Anchor** writes a CBOR-encoded proof to the Kaspa blockchain (via public Resolver nodes)
+4. **Markets** let users bet on price thresholds (e.g. "BTC >= $100,000 before March 1")
+5. **KRC-20 tokens** (YES/NO) represent shares, deployed on-chain via Kasplex inscriptions
+6. **LMSR pricing** ensures continuous liquidity - no order book needed
 
-- Node.js 20+
-- A running Kaspa testnet-11 node with `--utxoindex` enabled
-- CoinMarketCap API key (optional but recommended)
-
-## Installation
-
-```bash
-npm install
 ```
-
-This will automatically download and install the Kaspa WASM SDK from GitHub releases.
-
-## Configuration
-
-1. Copy `.env.example` to `.env`:
-```bash
-cp .env.example .env
+User connects wallet (Kasware/Kastle)
+  -> Buys YES shares on "BTC >= $100K"
+  -> Sends KAS to platform address
+  -> Receives KRC-20 YES tokens
+  -> If BTC hits $100K before deadline: each YES token pays 1 KAS
+  -> If not: NO token holders get paid
 ```
-
-2. Configure your environment variables:
-```env
-# Kaspa testnet private key (hex-encoded)
-KASPA_PRIVATE_KEY=<your-private-key>
-
-# Optional: override RPC URL (default: ws://127.0.0.1:16310)
-KASPA_RPC_URL=ws://127.0.0.1:16310
-
-# CoinMarketCap API keys (at least one recommended)
-CMC_API_KEY=<your-cmc-api-key>
-```
-
-3. Fund your testnet address via the faucet:
-   https://faucet-testnet-11.kaspa.org/
-
-## Usage
-
-### Smoke Tests (Verification)
-
-Run in order to verify setup:
-
-```bash
-# 1. Test RPC connection (requires running Kaspa node)
-npm run smoke:rpc
-
-# 2. Test price collectors
-npm run smoke:collector
-
-# 3. Test aggregation logic
-npm run smoke:aggregator
-
-# 4. Test transaction creation (dry run)
-npm run smoke:kaspa:dry
-
-# 5. Submit test transaction (live)
-npm run smoke:kaspa:live
-```
-
-### Run Oracle
-
-```bash
-npm start
-```
-
-The oracle will:
-1. Fetch prices every 60 seconds (±5s jitter)
-2. Calculate median index from valid sources
-3. Store proof bundles in `proofs/` directory
-4. Anchor to Kaspa if quorum is met
 
 ## Architecture
 
 ```
-src/
-├── index.ts              # Main entry + orchestration loop
-├── types.ts              # TypeScript interfaces
-├── config.ts             # Config loader
-├── collector/
-│   ├── index.ts          # Collector orchestrator
-│   ├── coingecko.ts      # CoinGecko adapter
-│   └── coinmarketcap.ts  # CoinMarketCap adapter (with key rotation)
-├── aggregator/
-│   └── index.ts          # Median, outlier filter, quorum
-├── proofs/
-│   └── index.ts          # Bundle creation, hashing, storage
-└── kaspa-anchor/
-    └── index.ts          # UTXO mgmt, tx build, sign, broadcast
+                    Vercel (Frontend)
+                    threshold-kaspa.vercel.app
+                           |
+                     Next.js rewrites
+                      /api/pm/*  /api/oracle/*
+                           |
+                    Railway (Backend)
+                    oracle-kaspa-production.up.railway.app
+                           |
+              +------------+------------+
+              |                         |
+        Oracle API               PM API
+        /health                  /pm/events
+        /latest                  /pm/trade
+        /verify/:txid            /pm/quote
+              |                         |
+              |                    LMSR Engine
+              |                    KRC-20 Service
+              |                         |
+              +-------+  +-----------+--+
+                      |  |
+                Kaspa Testnet-10
+                (via public Resolver)
 ```
 
-## Payload Format
+### Backend (`src/`)
 
-On-chain payloads are CBOR-encoded with the following structure:
+| Module | Description |
+|--------|-------------|
+| `collector/` | Price fetching from CoinGecko + CoinMarketCap (key rotation) |
+| `aggregator/` | Median calculation, outlier filtering (1% threshold), quorum check |
+| `proofs/` | Bundle creation, SHA-256 hashing, local archival |
+| `kaspa-anchor/` | On-chain anchoring via CBOR payloads (Resolver or direct RPC) |
+| `api/` | Oracle HTTP API (`/health`, `/latest`, `/bundle/:h`, `/verify/:txid`) |
+| `pm/engine/` | Market resolution engine, oracle sync loop |
+| `pm/math/` | LMSR (Logarithmic Market Scoring Rule) pricing |
+| `pm/krc20/` | KRC-20 token deployment, minting, transfers via Kasplex |
+| `pm/api/` | Prediction market HTTP API |
+| `server.ts` | Combined entrypoint (single port for Railway) |
+
+### Frontend (`apps/pm-web/`)
+
+Next.js 14 app with TailwindCSS. Pages:
+
+- `/pm` - Markets overview with live prices and scrolling ticker
+- `/pm/market/:id` - Market detail with trading panel, chart, trade history
+- `/pm/wallet` - Portfolio view with positions and P&L
+
+Wallet support: Kasware, Kastle, and demo mode.
+
+## Quick Start (Local Development)
+
+```bash
+# Install dependencies + Kaspa WASM SDK
+npm install
+
+# Copy environment config
+cp .env.example .env
+# Edit .env with your keys
+
+# Start Oracle (port 3000)
+npm start
+
+# Start PM server (port 3001)
+npm run pm
+
+# Start frontend (port 3002)
+npm run pm:web
+```
+
+Or run everything on one port:
+```bash
+npm run start:combined
+```
+
+## Deployment
+
+### Backend (Railway)
+
+The backend runs both Oracle and PM APIs on a single port via `src/server.ts`.
+
+**Environment variables:**
+
+| Variable | Value | Required |
+|----------|-------|----------|
+| `KASPA_PRIVATE_KEY` | Hex-encoded private key | Yes |
+| `PLATFORM_PRIVATE_KEY` | Same as above (for KRC-20 ops) | Yes |
+| `KASPA_NETWORK` | `testnet-10` | Yes |
+| `KASPA_RPC_URL` | Empty = use public Resolver | No |
+| `USE_REAL_KRC20` | `true` for on-chain tokens | Yes |
+| `KASPLEX_INDEXER_API` | `https://tn10api.kasplex.org` | Yes |
+| `CMC_API_KEY` | CoinMarketCap API key | Yes |
+| `API_PORT` | `3000` | No |
+| `PM_API_PORT` | `3001` | No |
+
+Railway auto-deploys from the `main` branch. The `railway.toml` configures the build.
+
+### Frontend (Vercel)
+
+| Variable | Value |
+|----------|-------|
+| `BACKEND_URL` | `https://<railway-app>.up.railway.app` |
+| `NEXT_PUBLIC_PLATFORM_ADDRESS` | Platform's Kaspa testnet address |
+
+Set Root Directory to `apps/pm-web` in Vercel project settings.
+
+## On-Chain Payload Format
+
+Each oracle tick anchors a CBOR-encoded payload to Kaspa:
 
 ```typescript
 {
-  v: 1,           // version
-  t: 1706659200,  // timestamp (unix seconds)
-  a: "BTC",       // asset
-  p: 97500.00,    // price (USD)
-  n: 2,           // number of sources
-  d: 0.0001,      // dispersion ratio
-  h: "sha256..."  // hash of full proof bundle
+  d: 0.0001,           // dispersion ratio between sources
+  h: "f4895c9144fd6bb9", // SHA-256 hash of full proof bundle (16 chars)
+  n: 2,                // number of valid price sources
+  p: 68497.66           // aggregated price (USD)
 }
 ```
 
-## Explorer
+Keys are alphabetically sorted for deterministic encoding. Payload fits within 80 bytes.
 
-View transactions on Kaspa testnet-11 explorer:
-https://explorer-tn11.kaspa.org/
+## KRC-20 Token System
+
+Each market has a YES and NO token pair deployed as KRC-20 inscriptions on Kaspa:
+
+- **Deploy**: Commit-reveal inscription (~1000 KAS protocol fee per token)
+- **Buy**: Platform transfers pre-minted tokens to buyer
+- **Sell**: Tokens return to platform pool
+- **Resolution**: Winning tokens pay 1 KAS each, losing tokens are worthless
+
+Token tickers follow the pattern: `Y{ASSET}{MONTH}{INDEX}` / `N{ASSET}{MONTH}{INDEX}`
+(e.g. `YBTCCA` = YES BTC March Market A)
+
+## API Endpoints
+
+### Oracle
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /health` | Service health, oracle state, Kaspa node info |
+| `GET /latest` | Latest price bundle with proof |
+| `GET /bundle/:h` | Specific bundle by hash |
+| `GET /verify/:txid` | Verify an anchored transaction |
+
+### Prediction Market
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /pm/events` | All events with oracle prices |
+| `GET /pm/event/:id` | Event detail with markets |
+| `GET /pm/market/:id` | Market detail with trades |
+| `GET /pm/quote` | Get trade quote (price, shares, fees) |
+| `POST /pm/trade` | Execute a trade |
+| `GET /pm/wallet/:addr` | User positions and balance |
+| `GET /pm/oracle` | Current oracle state |
+| `POST /pm/sync` | Force oracle sync |
+
+## Tech Stack
+
+- **Backend**: TypeScript, Node.js 20, Kaspa WASM SDK, cbor-x
+- **Frontend**: Next.js 14, React 18, TailwindCSS
+- **Blockchain**: Kaspa testnet-10, KRC-20 via Kasplex
+- **Infrastructure**: Railway (backend), Vercel (frontend)
+- **Pricing**: LMSR (Logarithmic Market Scoring Rule)
 
 ## License
 
