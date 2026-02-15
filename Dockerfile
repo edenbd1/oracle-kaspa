@@ -2,12 +2,14 @@ FROM node:20-slim
 
 WORKDIR /app
 
-COPY package*.json ./
-
 RUN apt-get update && apt-get install -y curl unzip && rm -rf /var/lib/apt/lists/*
 
-# Install ALL deps including devDependencies (tsx, typescript needed at runtime)
-RUN npm ci --include=dev
+COPY package*.json ./
+
+# Force install ALL deps (tsx/typescript needed at runtime)
+ENV NODE_ENV=development
+RUN npm ci
+ENV NODE_ENV=production
 
 # kaspa-wasm setup (may fail in some environments — anchoring becomes optional)
 RUN npm run setup:kaspa || echo "kaspa-wasm setup skipped"
