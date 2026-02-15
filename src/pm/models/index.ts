@@ -26,6 +26,7 @@ export interface Event {
 export interface Market {
   id: string;
   event_id: string;
+  asset: string; // e.g., 'BTC', 'ETH', 'KAS'
   threshold_price: number;
   direction: '>=' | '<=';
   status: MarketStatus;
@@ -141,6 +142,7 @@ export function createMarket(
   return {
     id: `mkt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     event_id: eventId,
+    asset,
     threshold_price: thresholdPrice,
     direction,
     status: 'OPEN',
@@ -189,6 +191,10 @@ export function createTrade(
  * Format market label
  */
 export function formatMarketLabel(market: Market): string {
+  const asset = market.asset || 'BTC';
   const dir = market.direction === '>=' ? '≥' : '≤';
-  return `BTC ${dir} $${market.threshold_price.toLocaleString()}`;
+  const priceStr = market.threshold_price >= 1
+    ? `$${market.threshold_price.toLocaleString()}`
+    : `$${market.threshold_price}`;
+  return `${asset} ${dir} ${priceStr}`;
 }

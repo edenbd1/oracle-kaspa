@@ -19,6 +19,7 @@ export interface Event {
 export interface Market {
   id: string;
   event_id: string;
+  asset?: string;
   threshold_price: number;
   direction: '>=' | '<=';
   status: MarketStatus;
@@ -126,6 +127,7 @@ export interface NonCustodialTradeParams {
 export interface EventsResponse {
   events: Event[];
   oracle_price: number;
+  oracle_prices?: Record<string, number>;
   oracle_txid: string | null;
   oracle_synced_at: number | null;
 }
@@ -134,6 +136,7 @@ export interface EventDetailResponse {
   event: Event;
   markets: Market[];
   oracle_price: number;
+  oracle_prices?: Record<string, number>;
   oracle_txid: string | null;
   oracle_hash: string | null;
   oracle_synced_at: number | null;

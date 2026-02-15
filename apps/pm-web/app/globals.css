@@ -149,6 +149,21 @@ input[type='number'] {
   animation: slide-in 0.3s ease-out;
 }
 
+/* Scrolling price ticker */
+@keyframes ticker-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.ticker-track {
+  animation: ticker-scroll 20s linear infinite;
+  width: max-content;
+}
+
+.ticker-track:hover {
+  animation-play-state: paused;
+}
+
 /* Card hover transition */
 .card-interactive {
   transition: all 0.2s ease;

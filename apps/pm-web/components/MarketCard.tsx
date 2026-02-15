@@ -27,7 +27,7 @@ export function MarketCard({ market }: MarketCardProps) {
           <div className="flex items-start justify-between mb-4">
             <div className="flex-1">
               <h3 className="font-semibold text-foreground text-base leading-tight mb-1">
-                BTC {direction} {formatPrice(market.threshold_price)}
+                {market.label || `${market.asset || 'BTC'} ${direction} ${formatPrice(market.threshold_price)}`}
               </h3>
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
                 <span>Vol {formatKas(market.volume, 'compact')}</span>

@@ -108,6 +108,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     sendJson(res, 200, {
       events: enriched,
       oracle_price: oracle.price,
+      oracle_prices: oracle.prices,
       oracle_txid: oracle.txid,
       oracle_synced_at: oracle.syncedAt
     });
@@ -148,6 +149,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       },
       markets: enrichedMarkets,
       oracle_price: oracle.price,
+      oracle_prices: oracle.prices,
       oracle_txid: oracle.txid,
       oracle_hash: oracle.hash,
       oracle_synced_at: oracle.syncedAt
@@ -474,6 +476,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     const oracle = getOracleState();
     sendJson(res, 200, {
       price: oracle.price,
+      prices: oracle.prices,
       txid: oracle.txid,
       hash: oracle.hash,
       synced_at: oracle.syncedAt,

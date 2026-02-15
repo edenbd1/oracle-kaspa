@@ -108,7 +108,7 @@ export default function MarketPage({
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
-              BTC {direction} {formatPrice(market.threshold_price)}
+              {market.label || `${market.asset || 'BTC'} ${direction} ${formatPrice(market.threshold_price)}`}
             </h1>
             {event && (
               <p className="text-sm text-muted-foreground mt-1">{event.title}</p>

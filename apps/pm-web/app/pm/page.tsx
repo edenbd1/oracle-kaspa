@@ -5,7 +5,7 @@ import { useEvents, useEvent } from '@/lib/hooks/useMarkets';
 import { MarketCard } from '@/components/MarketCard';
 import { ThresholdLogo } from '@/components/ThresholdLogo';
 import { formatPrice, formatCountdown, formatKas } from '@/lib/utils';
-import type { Market } from '@/lib/types';
+import type { Market, Event } from '@/lib/types';
 
 function LoadingSkeleton() {
   return (
@@ -47,124 +47,113 @@ function ErrorState({ message }: { message: string }) {
   );
 }
 
-function HeroSection({ price, syncedAt, event, marketCount, totalVolume }: {
-  price: number;
+function HeroSection({ syncedAt, totalMarkets }: {
   syncedAt: number | null;
-  event: { title: string; description: string; deadline: number };
-  marketCount: number;
-  totalVolume: number;
+  totalMarkets: number;
 }) {
-  const [timeRemaining, setTimeRemaining] = useState(
-    Math.max(0, event.deadline - Date.now())
-  );
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTimeRemaining(Math.max(0, event.deadline - Date.now()));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [event.deadline]);
-
   const lagSeconds = syncedAt ? Math.floor((Date.now() - syncedAt) / 1000) : null;
   const isLive = lagSeconds !== null && lagSeconds < 120;
 
   return (
-    <div className="mb-10">
-      {/* Brand + oracle */}
-      <div className="flex items-center gap-2 mb-4">
+    <div className="mb-8">
+      <div className="flex items-center gap-2 mb-2">
         <ThresholdLogo size={20} className="text-primary" />
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
           Binary Markets on Kaspa
         </span>
       </div>
-
-      {/* Live price */}
-      <div className="flex items-baseline gap-3 mb-4">
-        <span className="text-4xl sm:text-5xl font-bold text-gradient tracking-tight">
-          {formatPrice(price)}
-        </span>
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${isLive ? 'bg-yes animate-live-pulse' : 'bg-muted-foreground'}`} />
-          <span className="text-sm text-muted-foreground">
-            BTC/USD {isLive ? 'Live' : 'Offline'}
-            {lagSeconds !== null && lagSeconds < 300 && (
-              <span className="text-muted-foreground/60"> · {lagSeconds}s ago</span>
-            )}
-          </span>
-        </div>
-      </div>
-
-      {/* Stats row */}
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
+        <span>{totalMarkets} markets</span>
+        <span className="text-border-light">|</span>
         <span className="flex items-center gap-1.5">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          {timeRemaining > 0
-            ? <>{formatCountdown(timeRemaining)} left</>
-            : <span className="text-no">Deadline passed</span>
-          }
+          <div className={`w-2 h-2 rounded-full ${isLive ? 'bg-yes animate-live-pulse' : 'bg-muted-foreground'}`} />
+          {isLive ? 'Oracle Live' : 'Oracle Offline'}
         </span>
-        <span className="text-border-light">|</span>
-        <span>{marketCount} markets</span>
-        <span className="text-border-light">|</span>
-        <span>{formatKas(totalVolume, 'compact')} volume</span>
       </div>
     </div>
   );
 }
 
-function MarketGrid({ markets, onTradeComplete }: {
-  markets: Market[];
-  onTradeComplete?: () => void;
+function EventSection({ eventSummary, oraclePrices }: {
+  eventSummary: Event;
+  oraclePrices: Record<string, number>;
 }) {
-  const sortedMarkets = [...markets].sort((a, b) => b.threshold_price - a.threshold_price);
+  const { data: eventData } = useEvent(eventSummary.id, 15000);
 
-  if (markets.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-        <p>No markets available</p>
-      </div>
-    );
-  }
+  const markets = eventData?.markets || [];
+  const sortedMarkets = [...markets].sort((a, b) => b.threshold_price - a.threshold_price);
+  const asset = eventSummary.asset;
+  const assetPrice = oraclePrices[asset];
+
+  const [timeRemaining, setTimeRemaining] = useState(
+    Math.max(0, eventSummary.deadline - Date.now())
+  );
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimeRemaining(Math.max(0, eventSummary.deadline - Date.now()));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [eventSummary.deadline]);
+
+  const totalVolume = markets.reduce((sum: number, m: Market) => sum + (m.volume || 0), 0);
 
   return (
-    <div>
+    <div className="mb-10">
+      {/* Event header */}
       <div className="flex items-center justify-between mb-5">
-        <h2 className="text-[13px] font-semibold text-muted-foreground uppercase tracking-wider">
-          {markets.length} Markets
-        </h2>
+        <div>
+          <div className="flex items-center gap-3 mb-1">
+            <h2 className="text-xl font-bold text-foreground">{eventSummary.title}</h2>
+            {assetPrice != null && (
+              <span className="text-lg font-semibold text-primary">{formatPrice(assetPrice)}</span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {timeRemaining > 0
+                ? <>{formatCountdown(timeRemaining)} left</>
+                : <span className="text-no">Deadline passed</span>
+              }
+            </span>
+            <span>{markets.length} markets</span>
+            <span>{formatKas(totalVolume, 'compact')} vol</span>
+          </div>
+        </div>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {sortedMarkets.map((market) => (
-          <MarketCard
-            key={market.id}
-            market={market}
-          />
-        ))}
-      </div>
+
+      {/* Markets grid */}
+      {sortedMarkets.length === 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-52 bg-card border border-border rounded-xl animate-pulse" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {sortedMarkets.map((market) => (
+            <MarketCard key={market.id} market={market} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 export default function PmPage() {
-  const { data: eventsData, error: eventsError, isLoading: eventsLoading } = useEvents();
-
-  const eventId = eventsData?.events?.[0]?.id;
-  const { data: eventData, error: eventError, refresh } = useEvent(
-    eventId || '',
-    3000
-  );
+  const { data: eventsData, error: eventsError, isLoading: eventsLoading } = useEvents(15000);
 
   const isLoading = eventsLoading && !eventsData;
-  const error = eventsError || eventError;
 
   if (isLoading) {
     return <LoadingSkeleton />;
   }
 
-  if (error) {
-    return <ErrorState message={error.message} />;
+  if (eventsError) {
+    return <ErrorState message={eventsError.message} />;
   }
 
   if (!eventsData?.events?.length) {
@@ -179,22 +168,22 @@ export default function PmPage() {
     );
   }
 
-  const event = eventData?.event || eventsData.events[0];
-  const markets = eventData?.markets || [];
-  const oraclePrice = eventData?.oracle_price || eventsData.oracle_price;
-  const oracleSyncedAt = eventData?.oracle_synced_at || eventsData.oracle_synced_at;
-  const totalVolume = markets.reduce((sum: number, m: Market) => sum + (m.volume || 0), 0);
+  const oraclePrices = eventsData.oracle_prices || {};
+  const totalMarkets = eventsData.events.reduce((sum, e) => sum + (e.market_count || 0), 0);
 
   return (
     <div className="animate-slide-in">
       <HeroSection
-        price={oraclePrice}
-        syncedAt={oracleSyncedAt}
-        event={event}
-        marketCount={markets.length}
-        totalVolume={totalVolume}
+        syncedAt={eventsData.oracle_synced_at}
+        totalMarkets={totalMarkets}
       />
-      <MarketGrid markets={markets} onTradeComplete={refresh} />
+      {eventsData.events.map((event) => (
+        <EventSection
+          key={event.id}
+          eventSummary={event}
+          oraclePrices={oraclePrices}
+        />
+      ))}
     </div>
   );
 }

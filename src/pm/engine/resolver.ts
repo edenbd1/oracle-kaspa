@@ -9,6 +9,8 @@ import {
   updateMarket,
   getOracleState,
   updateOracleState,
+  updateOraclePrice,
+  getOraclePrices,
   getPositionsForMarket,
   getBalance,
   upsertBalance,
@@ -52,6 +54,29 @@ export async function fetchOracleLatest(): Promise<OracleLatest | null> {
     console.error('[Resolver] Failed to fetch oracle:', e);
     return null;
   }
+}
+
+/**
+ * Fetch ETH and KAS prices from CoinGecko.
+ */
+export async function fetchAssetPrices(): Promise<Record<string, number>> {
+  const prices: Record<string, number> = {};
+  try {
+    const res = await fetch(
+      'https://api.coingecko.com/api/v3/simple/price?ids=ethereum,kaspa&vs_currencies=usd'
+    );
+    if (res.ok) {
+      const data = await res.json() as {
+        ethereum?: { usd: number };
+        kaspa?: { usd: number };
+      };
+      if (data.ethereum?.usd) prices['ETH'] = data.ethereum.usd;
+      if (data.kaspa?.usd) prices['KAS'] = data.kaspa.usd;
+    }
+  } catch (e) {
+    console.error('[Resolver] Failed to fetch ETH/KAS prices:', e);
+  }
+  return prices;
 }
 
 /**
@@ -159,36 +184,50 @@ export async function processOracleTick(data: OracleLatest): Promise<{
   price: number;
   marketsResolved: string[];
 }> {
-  const price = data.bundle.index.price;
+  const btcPrice = data.bundle.index.price;
   const txid = data.latest.txid;
   const hash = data.latest.h;
 
-  // Update oracle state
-  updateOracleState(price, txid, hash);
+  // Update BTC oracle state (on-chain anchored)
+  updateOracleState(btcPrice, txid, hash);
+
+  // Fetch ETH and KAS prices from CoinGecko
+  const assetPrices = await fetchAssetPrices();
+  for (const [asset, price] of Object.entries(assetPrices)) {
+    updateOraclePrice(asset, price);
+  }
+
+  // Build full price map for resolution
+  const allPrices = getOraclePrices();
 
   const marketsResolved: string[] = [];
   const openMarkets = getOpenMarkets();
   const now = Date.now();
 
   for (const market of openMarkets) {
+    // Determine which price to use for this market's asset
+    const { getEvent } = await import('../store/index.js');
+    const event = getEvent(market.event_id);
+    const marketAsset = market.asset || event?.asset || 'BTC';
+    const assetPrice = allPrices[marketAsset];
+
+    if (assetPrice == null) continue; // No price available for this asset yet
+
     // Check if condition is met (early resolution)
-    if (checkMarketCondition(market, price)) {
-      await resolveMarket(market, 'YES', price, txid, hash);
+    if (checkMarketCondition(market, assetPrice)) {
+      await resolveMarket(market, 'YES', assetPrice, txid, hash);
       marketsResolved.push(market.id);
       continue;
     }
 
     // Check if deadline passed (resolve as NO)
-    // Get the event deadline
-    const { getEvent } = await import('../store/index.js');
-    const event = getEvent(market.event_id);
     if (event && now >= event.deadline) {
-      await resolveMarket(market, 'NO', price, txid, hash);
+      await resolveMarket(market, 'NO', assetPrice, txid, hash);
       marketsResolved.push(market.id);
     }
   }
 
-  return { price, marketsResolved };
+  return { price: btcPrice, marketsResolved };
 }
 
 /**

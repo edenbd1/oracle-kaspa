@@ -65,7 +65,7 @@ export function MarketRow({ market, onTradeComplete }: MarketRowProps) {
       <td className="px-4 py-4">
         <Link href={`/pm/market/${market.id}`} className="block">
           <div className="font-medium text-foreground hover:text-primary transition-colors">
-            BTC {direction} {formatPrice(market.threshold_price)}
+            {market.label || `${market.asset || 'BTC'} ${direction} ${formatPrice(market.threshold_price)}`}
           </div>
           {market.yes_token_ticker && (
             <div className="text-xs text-muted-foreground mt-0.5">

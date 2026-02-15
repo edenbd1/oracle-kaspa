@@ -44,6 +44,7 @@ interface StoreData {
   lastOracleTxid: string | null;
   lastOracleHash: string | null;
   lastSyncAt: number | null;
+  oraclePrices: Record<string, number>; // asset -> price (BTC, ETH, KAS)
   // KRC20 Token storage
   krc20Tokens: KRC20TokenInfo[];
   krc20MintEvents: KRC20MintEvent[];
@@ -62,6 +63,7 @@ const defaultStore: StoreData = {
   lastOracleTxid: null,
   lastOracleHash: null,
   lastSyncAt: null,
+  oraclePrices: {},
   krc20Tokens: [],
   krc20MintEvents: [],
   krc20BurnEvents: [],
@@ -273,12 +275,14 @@ export function getOracleState(): {
   txid: string | null;
   hash: string | null;
   syncedAt: number | null;
+  prices: Record<string, number>;
 } {
   return {
     price: store.lastOraclePrice,
     txid: store.lastOracleTxid,
     hash: store.lastOracleHash,
-    syncedAt: store.lastSyncAt
+    syncedAt: store.lastSyncAt,
+    prices: { ...store.oraclePrices }
   };
 }
 
@@ -291,7 +295,18 @@ export function updateOracleState(
   store.lastOracleTxid = txid;
   store.lastOracleHash = hash;
   store.lastSyncAt = Date.now();
+  // Also update BTC in multi-asset prices
+  store.oraclePrices['BTC'] = price;
   saveStore();
+}
+
+export function updateOraclePrice(asset: string, price: number): void {
+  store.oraclePrices[asset] = price;
+  saveStore();
+}
+
+export function getOraclePrices(): Record<string, number> {
+  return { ...store.oraclePrices };
 }
 
 // ============ KRC20 Tokens ============
@@ -382,30 +397,28 @@ function indexToLetter(index: number): string {
   return String.fromCharCode(65 + (index % 26));
 }
 
-export function seedDemoData(): void {
-  // Create demo event
-  const deadline = new Date('2026-03-01T00:00:00Z').getTime();
-  const event = createEvent(
-    'Bitcoin Price Prediction',
-    'What price will Bitcoin hit before March 1, 2026?',
-    'BTC',
-    deadline
-  );
+/**
+ * Helper to seed an event with markets and KRC20 tokens
+ */
+function seedEventWithMarkets(
+  title: string,
+  description: string,
+  asset: string,
+  deadline: number,
+  thresholds: number[],
+  liquidityB: number,
+  feeBps: number
+): void {
+  const event = createEvent(title, description, asset, deadline);
   addEvent(event);
-
-  // Create markets at different thresholds (based on current BTC ~$77k)
-  const thresholds = [150000, 140000, 130000, 120000, 110000, 100000, 90000, 80000];
-  const liquidityB = 5000; // Higher liquidity for smoother price curves
-  const feeBps = 100; // 1% fee
 
   for (let i = 0; i < thresholds.length; i++) {
     const threshold = thresholds[i];
-    const marketIndex = indexToLetter(i); // A, B, C, D, E, F, G, H
+    const marketIndex = indexToLetter(i);
     const market = createMarket(event.id, threshold, '>=', liquidityB, feeBps, event.asset, marketIndex, event.deadline);
     addMarket(market);
-    // Initialize price history with starting point
     addPricePoint(market.id, 0.5);
-    // Deploy KRC20 tokens for the market (inline to avoid circular dependency)
+
     const yesTicker = market.yes_token_ticker!;
     const noTicker = market.no_token_ticker!;
     const timestamp = Date.now();
@@ -415,11 +428,13 @@ export function seedDemoData(): void {
       return (prefix + ts + rand).repeat(4).slice(0, 64);
     };
 
-    const PREMINT_SUPPLY = 100_000; // 100K tokens per side (10 on-chain mints with dec=8)
+    const PREMINT_SUPPLY = 100_000;
+
+    const formatThreshold = (t: number) => t >= 1 ? `$${t.toLocaleString()}` : `$${t}`;
 
     const yesToken: KRC20TokenInfo = {
       ticker: yesTicker,
-      display_name: `YES ${event.asset} $${threshold.toLocaleString()}`,
+      display_name: `YES ${event.asset} ${formatThreshold(threshold)}`,
       market_id: market.id,
       side: 'YES',
       asset: event.asset,
@@ -434,7 +449,7 @@ export function seedDemoData(): void {
 
     const noToken: KRC20TokenInfo = {
       ticker: noTicker,
-      display_name: `NO ${event.asset} $${threshold.toLocaleString()}`,
+      display_name: `NO ${event.asset} ${formatThreshold(threshold)}`,
       market_id: market.id,
       side: 'NO',
       asset: event.asset,
@@ -451,7 +466,46 @@ export function seedDemoData(): void {
     upsertKRC20Token(noToken);
   }
 
-  console.log(`[PM Store] Seeded event with ${thresholds.length} markets and KRC20 tokens`);
+  console.log(`[PM Store] Seeded ${asset} event with ${thresholds.length} markets and KRC20 tokens`);
+}
+
+export function seedDemoData(): void {
+  const deadline = new Date('2026-03-01T00:00:00Z').getTime();
+  const liquidityB = 5000;
+  const feeBps = 100;
+
+  // BTC markets (current ~$97k)
+  seedEventWithMarkets(
+    'Bitcoin Price Prediction',
+    'What price will Bitcoin hit before March 1, 2026?',
+    'BTC',
+    deadline,
+    [150000, 140000, 130000, 120000, 110000, 100000, 90000, 80000],
+    liquidityB,
+    feeBps
+  );
+
+  // ETH markets (current ~$2,700)
+  seedEventWithMarkets(
+    'Ethereum Price Prediction',
+    'What price will Ethereum hit before March 1, 2026?',
+    'ETH',
+    deadline,
+    [5000, 4500, 4000, 3500, 3000, 2500, 2000],
+    liquidityB,
+    feeBps
+  );
+
+  // KAS markets (current ~$0.08)
+  seedEventWithMarkets(
+    'Kaspa Price Prediction',
+    'What price will Kaspa hit before March 1, 2026?',
+    'KAS',
+    deadline,
+    [0.20, 0.15, 0.12, 0.10, 0.08, 0.06, 0.05],
+    liquidityB,
+    feeBps
+  );
 }
 
 // Initialize on import

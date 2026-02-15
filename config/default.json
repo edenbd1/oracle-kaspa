@@ -1,7 +1,7 @@
 {
   "network": "testnet-10",
   "addressPrefixExpected": "kaspatest:",
-  "anchorIntervalSeconds": 60,
+  "anchorIntervalSeconds": 15,
   "jitterSeconds": 5,
   "rpcUrl": "ws://127.0.0.1:17210",
   "providers": {
