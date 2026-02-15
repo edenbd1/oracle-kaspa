@@ -19,8 +19,8 @@ export function PriceTicker() {
 
   if (items.length === 0) return null;
 
-  // Duplicate items for seamless infinite scroll
-  const repeated = [...items, ...items, ...items, ...items];
+  // Repeat enough times to always fill the viewport during scroll
+  const repeated = Array(10).fill(items).flat();
 
   return (
     <div className="w-full bg-[#06070a] border-b border-border overflow-hidden">

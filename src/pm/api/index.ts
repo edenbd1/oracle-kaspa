@@ -70,7 +70,7 @@ function parseQuery(url: string): Record<string, string> {
   return query;
 }
 
-async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+export async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const fullUrl = req.url || '/';
   const [url] = fullUrl.split('?');
   const method = req.method || 'GET';

@@ -116,7 +116,7 @@ async function handleVerify(txid: string, res: ServerResponse): Promise<void> {
   sendJson(res, statusCode, result);
 }
 
-async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+export async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = req.url || '/';
 
   // GET /health
