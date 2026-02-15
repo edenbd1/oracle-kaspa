@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Card, CardContent } from './ui/Card';
 import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
 import { useWallet } from '@/lib/hooks/useWallet';
@@ -59,58 +58,58 @@ export function PositionCard({ position, onAction }: PositionCardProps) {
   };
 
   return (
-    <Card className="overflow-hidden">
-      <CardContent className="p-4">
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      <div className="p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1">
             <Link
               href={`/pm/market/${position.market_id}`}
-              className="font-medium text-foreground hover:text-primary transition-colors"
+              className="font-semibold text-foreground hover:text-primary transition-colors"
             >
               {position.market_label || position.market_id}
             </Link>
 
-            <div className="mt-2 space-y-1">
+            <div className="mt-2.5 space-y-1.5">
               {hasYesShares && (
                 <div className="flex items-center gap-2 text-sm">
-                  <span className="text-success font-medium">
+                  <span className="font-semibold text-yes">
                     {position.yes_shares.toFixed(2)} YES
                   </span>
                   {position.yes_token_ticker && (
-                    <span className="text-muted-foreground text-xs">
+                    <span className="text-muted-foreground text-xs font-mono">
                       ({position.yes_token_ticker})
                     </span>
                   )}
                   {!isResolved && position.current_price_yes !== undefined && (
-                    <span className="text-muted-foreground">
+                    <span className="text-muted-foreground font-mono text-xs">
                       @ {formatProbability(position.current_price_yes)}
                     </span>
                   )}
-                  {isYesWinner && <Badge variant="success">WINNER</Badge>}
+                  {isYesWinner && <Badge variant="success">Winner</Badge>}
                 </div>
               )}
 
               {hasNoShares && (
                 <div className="flex items-center gap-2 text-sm">
-                  <span className="text-destructive font-medium">
+                  <span className="font-semibold text-no">
                     {position.no_shares.toFixed(2)} NO
                   </span>
                   {position.no_token_ticker && (
-                    <span className="text-muted-foreground text-xs">
+                    <span className="text-muted-foreground text-xs font-mono">
                       ({position.no_token_ticker})
                     </span>
                   )}
                   {!isResolved && position.current_price_no !== undefined && (
-                    <span className="text-muted-foreground">
+                    <span className="text-muted-foreground font-mono text-xs">
                       @ {formatProbability(position.current_price_no)}
                     </span>
                   )}
-                  {isNoWinner && <Badge variant="success">WINNER</Badge>}
+                  {isNoWinner && <Badge variant="success">Winner</Badge>}
                 </div>
               )}
             </div>
 
-            <div className="mt-2 text-sm text-muted-foreground">
+            <div className="mt-2.5 text-sm text-muted-foreground">
               {isResolved ? (
                 <span>
                   {isYesWinner && `Payout: ${formatKas(position.yes_shares)}`}
@@ -118,7 +117,7 @@ export function PositionCard({ position, onAction }: PositionCardProps) {
                   {!isYesWinner && !isNoWinner && 'Position expired worthless'}
                 </span>
               ) : (
-                <span>Current value: {formatKas(currentValue)}</span>
+                <span>Current value: <span className="font-semibold text-foreground">{formatKas(currentValue)}</span></span>
               )}
             </div>
           </div>
@@ -157,16 +156,16 @@ export function PositionCard({ position, onAction }: PositionCardProps) {
         </div>
 
         {redeemError && (
-          <div className="mt-3 text-sm text-destructive bg-destructive/10 rounded px-2 py-1">
+          <div className="mt-3 text-sm text-no bg-no/10 rounded-lg px-3 py-2">
             {redeemError}
           </div>
         )}
         {redeemSuccess && (
-          <div className="mt-3 text-sm text-success bg-success/10 rounded px-2 py-1">
+          <div className="mt-3 text-sm text-yes bg-yes/10 rounded-lg px-3 py-2">
             {redeemSuccess}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

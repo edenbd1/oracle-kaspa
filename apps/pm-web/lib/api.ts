@@ -21,7 +21,12 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
     },
   });
 
-  const data = await res.json();
+  let data: any;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error(`API error: ${res.status} ${res.statusText}`);
+  }
 
   if (!res.ok) {
     throw new Error(data.error || `API error: ${res.status}`);

@@ -10,17 +10,17 @@ interface BadgeProps {
 
 export function Badge({ children, variant = 'default', className }: BadgeProps) {
   const variants = {
-    default: 'bg-primary/20 text-primary',
-    success: 'bg-success/20 text-success',
-    warning: 'bg-warning/20 text-warning',
-    danger: 'bg-destructive/20 text-destructive',
+    default: 'bg-primary/15 text-primary',
+    success: 'bg-yes/15 text-yes',
+    warning: 'bg-warning/15 text-warning',
+    danger: 'bg-no/15 text-no',
     muted: 'bg-muted text-muted-foreground',
   };
 
   return (
     <span
       className={classNames(
-        'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
+        'inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-semibold uppercase tracking-wider',
         variants[variant],
         className
       )}

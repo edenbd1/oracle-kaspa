@@ -177,6 +177,8 @@ export async function deployMarketTokens(market: Market, event: Event): Promise<
     }
   }
 
+  const PREMINT_SUPPLY = 100_000; // 100K tokens per side (10 on-chain mints with dec=8)
+
   const yesToken: KRC20TokenInfo = {
     ticker: yesTicker,
     display_name: yesDisplayName,
@@ -185,7 +187,8 @@ export async function deployMarketTokens(market: Market, event: Event): Promise<
     asset: event.asset,
     threshold: market.threshold_price,
     market_index: marketIndex,
-    total_supply: 0,
+    total_supply: PREMINT_SUPPLY,
+    platform_balance: PREMINT_SUPPLY,
     decimals: DECIMALS,
     deployed_at: timestamp,
     deployed_txid: yesDeployTxid
@@ -199,7 +202,8 @@ export async function deployMarketTokens(market: Market, event: Event): Promise<
     asset: event.asset,
     threshold: market.threshold_price,
     market_index: marketIndex,
-    total_supply: 0,
+    total_supply: PREMINT_SUPPLY,
+    platform_balance: PREMINT_SUPPLY,
     decimals: DECIMALS,
     deployed_at: timestamp,
     deployed_txid: noDeployTxid
@@ -215,10 +219,11 @@ export async function deployMarketTokens(market: Market, event: Event): Promise<
 }
 
 /**
- * Mint tokens when user buys shares
+ * Transfer tokens from platform pool to user (on buy).
  *
- * In real mode: Creates on-chain mint inscription
- * Cost: ~1 KAS (paid by user as part of trade)
+ * Pre-minted tokens are held in platform_balance.
+ * In mock mode: instant accounting transfer.
+ * In real mode: on-chain KRC-20 transfer (fast, no mint needed).
  */
 export async function mint(
   ticker: string,
@@ -239,52 +244,45 @@ export async function mint(
     };
   }
 
-  let txid = generateMockTxid('mint');
+  // Check platform has enough pre-minted tokens
+  const platformBal = token.platform_balance ?? 0;
+  if (platformBal < amount) {
+    return {
+      success: false,
+      ticker,
+      amount,
+      txid: '',
+      new_supply: token.total_supply,
+      error: `Insufficient platform balance: have ${platformBal.toFixed(2)}, need ${amount.toFixed(2)}`
+    };
+  }
 
-  // Real mode: Mint to platform, then transfer to recipient
+  let txid = generateMockTxid('transfer');
+
+  // Real mode: On-chain transfer from platform to recipient (no mint needed!)
   if (USE_REAL_KRC20) {
-    console.log(`[KRC20] Minting real tokens on-chain...`);
-
-    // Step 1: Mint to platform wallet
-    const mintResult = await kasplex.mintToken(ticker, recipient);
-    if (!mintResult.success || !mintResult.revealTxid) {
-      console.error(`[KRC20] On-chain mint failed: ${mintResult.error}`);
+    console.log(`[KRC20] Transferring ${amount} ${ticker} from platform to ${recipient}...`);
+    const transferResult = await kasplex.transferToken(ticker, recipient, amount);
+    if (!transferResult.success) {
+      console.error(`[KRC20] Transfer failed: ${transferResult.error}`);
       return {
         success: false,
         ticker,
         amount,
         txid: '',
         new_supply: token.total_supply,
-        error: mintResult.error || 'On-chain mint failed'
+        error: transferResult.error || 'Transfer failed'
       };
     }
-
-    txid = mintResult.revealTxid;
-    console.log(`[KRC20] Minted to platform: ${txid}`);
-
-    // Step 2: Transfer to recipient - MUST succeed or fail the whole operation
-    const transferResult = await kasplex.transferToken(ticker, recipient, amount);
-    if (!transferResult.success) {
-      console.error(`[KRC20] Transfer to ${recipient} failed: ${transferResult.error}`);
-      // Mint succeeded but transfer failed = inconsistent state, fail the trade
-      return {
-        success: false,
-        ticker,
-        amount,
-        txid: txid,
-        new_supply: token.total_supply,
-        error: `Mint succeeded but transfer failed: ${transferResult.error}`
-      };
-    }
-
-    console.log(`[KRC20] Transferred ${amount} ${ticker} to ${recipient}: ${transferResult.revealTxid}`);
+    txid = transferResult.revealTxid || txid;
+    console.log(`[KRC20] Transferred ${amount} ${ticker} to ${recipient}: ${txid}`);
   }
 
-  // Update local total supply
-  token.total_supply += amount;
+  // Deduct from platform balance (tokens move from platform → user)
+  token.platform_balance = platformBal - amount;
   upsertKRC20Token(token);
 
-  // Record mint event
+  // Record mint/transfer event
   const mintEvent: KRC20MintEvent = {
     id: generateEventId('mint'),
     ticker,
@@ -296,7 +294,7 @@ export async function mint(
   };
   addKRC20MintEvent(mintEvent);
 
-  console.log(`[KRC20] Minted ${amount.toFixed(4)} ${ticker} to ${recipient} (real=${USE_REAL_KRC20})`);
+  console.log(`[KRC20] Transferred ${amount.toFixed(4)} ${ticker} to ${recipient} (real=${USE_REAL_KRC20})`);
 
   return {
     success: true,
@@ -308,10 +306,10 @@ export async function mint(
 }
 
 /**
- * Burn tokens when user sells shares
+ * Return tokens from user to platform pool (on sell).
  *
- * In real mode: Would transfer tokens back to platform for burning
- * Note: KRC-20 burning typically requires a transfer to a burn address
+ * Tokens go back to platform_balance for re-use.
+ * In real mode: user would transfer tokens back to platform wallet.
  */
 export async function burn(
   ticker: string,
@@ -332,33 +330,15 @@ export async function burn(
     };
   }
 
-  // Check sufficient supply
-  if (token.total_supply < amount) {
-    return {
-      success: false,
-      ticker,
-      amount,
-      txid: '',
-      new_supply: token.total_supply,
-      error: `Insufficient token supply`
-    };
-  }
+  let txid = generateMockTxid('return');
 
-  let txid = generateMockTxid('burn');
-
-  // Real mode: Transfer tokens to platform (for later burning)
-  // Note: In a full implementation, we'd transfer tokens back to platform wallet
-  // and then burn them. For hackathon, we track locally.
+  // Real mode: user transfers tokens back to platform
   if (USE_REAL_KRC20) {
-    console.log(`[KRC20] Real mode: Tracking burn of ${amount} ${ticker} from ${from}`);
-    // In production, we would:
-    // 1. User transfers tokens to platform
-    // 2. Platform burns them via inscription
-    // For now, just track locally
+    console.log(`[KRC20] Real mode: Tracking return of ${amount} ${ticker} from ${from}`);
   }
 
-  // Update total supply
-  token.total_supply -= amount;
+  // Return tokens to platform balance
+  token.platform_balance = (token.platform_balance ?? 0) + amount;
   upsertKRC20Token(token);
 
   // Record burn event
@@ -373,7 +353,7 @@ export async function burn(
   };
   addKRC20BurnEvent(burnEvent);
 
-  console.log(`[KRC20] Burned ${amount.toFixed(4)} ${ticker} from ${from} (real=${USE_REAL_KRC20})`);
+  console.log(`[KRC20] Returned ${amount.toFixed(4)} ${ticker} from ${from} to platform (real=${USE_REAL_KRC20})`);
 
   return {
     success: true,

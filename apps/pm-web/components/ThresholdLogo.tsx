@@ -1,0 +1,55 @@
+interface ThresholdLogoProps {
+  size?: number;
+  className?: string;
+}
+
+export function ThresholdLogo({ size = 28, className }: ThresholdLogoProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="613 362 821 811"
+      width={size}
+      height={size}
+      className={className}
+      shapeRendering="crispEdges"
+    >
+      <path
+        fill="currentColor"
+        fillRule="evenodd"
+        d="
+          M 701 408
+          L 701 667
+          L 634 667
+          L 634 853
+          L 700 853
+          L 930 1083
+          L 930 1148
+          L 934 1152
+          L 1181 1152
+          L 1186 1146
+          L 1186 927
+          L 1408 927
+          L 1414 921
+          L 1414 674
+          L 1410 667
+          L 1346 667
+          L 1346 408
+          L 1178 564
+          L 1026 383
+          L 891 565
+          Z
+
+          M 702 674
+          L 1346 674
+          L 1346 858
+          L 1118 858
+          L 1118 1085
+          L 932 1085
+          L 932 858
+          L 702 858
+          Z
+        "
+      />
+    </svg>
+  );
+}

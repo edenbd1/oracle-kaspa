@@ -29,6 +29,9 @@ import * as indexer from '../krc20/indexer.js';
 
 const PORT = parseInt(process.env.PM_API_PORT || '3001', 10);
 
+// Dedup: track processed payment txids to prevent double-execution on frontend retries
+const processedTxids = new Map<string, unknown>();
+
 function sendJson(res: ServerResponse, status: number, data: unknown): void {
   res.writeHead(status, {
     'Content-Type': 'application/json',
@@ -269,6 +272,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       return;
     }
 
+    // Dedup: reject if this txid was already processed
+    if (body.txid && processedTxids.has(body.txid)) {
+      console.log(`[PM API] Duplicate txid ${body.txid.slice(0, 16)}... — returning cached result`);
+      const cached = processedTxids.get(body.txid)!;
+      sendJson(res, 200, cached);
+      return;
+    }
+
     // Log trade request
     console.log(`[PM API] Trade request:`, {
       address: body.address?.slice(0, 20) + '...',
@@ -299,7 +310,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     // Get updated position
     const position = getPosition(body.address, body.marketId);
 
-    sendJson(res, 200, {
+    const responseData = {
       ok: true,
       trade: result.trade,
       new_prices: result.marketSnapshot ? {
@@ -320,7 +331,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       // KRC20 token info
       tokenMinted: result.tokenMinted,
       tokenBurned: result.tokenBurned
-    });
+    };
+
+    // Cache by txid to prevent duplicate execution on retries
+    if (body.txid) {
+      processedTxids.set(body.txid, responseData);
+    }
+
+    sendJson(res, 200, responseData);
     return;
   }
 

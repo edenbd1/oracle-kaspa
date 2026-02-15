@@ -120,7 +120,7 @@ export function createMarket(
   eventId: string,
   thresholdPrice: number,
   direction: '>=' | '<=',
-  liquidityB: number = 200, // Default liquidity
+  liquidityB: number = 5000, // Default liquidity
   feeBps: number = 100, // Default 1% fee
   asset: string = 'BTC', // Asset for token ticker generation
   marketIndex: string = 'A', // Market index (A, B, C...)

@@ -163,11 +163,9 @@ export async function sendKaspa(
       console.log('[Trade] Tx sent via Kastle:', txid);
       return txid;
     } catch (error) {
-      if (error instanceof Error) {
-        if (error.message.includes('rejected') || error.message.includes('cancel')) {
-          throw new Error('Transaction rejected by user');
-        }
-        throw error;
+      const msg = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+      if (msg.includes('reject') || msg.includes('cancel') || msg.includes('denied') || msg.includes('user')) {
+        throw new Error('Transaction rejected');
       }
       throw new Error('Failed to send transaction');
     }
@@ -181,17 +179,25 @@ export async function sendKaspa(
 
     try {
       console.log('[Trade] Sending tx via KasWare:', { toAddress, sompi, priorityFee: 0 });
-      const txid = await provider.sendKaspa(toAddress, sompi, {
+      const result = await provider.sendKaspa(toAddress, sompi, {
         priorityFee: 0,
       });
+      // KasWare may return full TX object (JSON string) or just a txid
+      let txid = result;
+      if (typeof result === 'string' && result.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(result);
+          txid = parsed.id || result;
+        } catch {
+          // Not JSON, use as-is
+        }
+      }
       console.log('[Trade] Tx sent via KasWare:', txid);
       return txid;
     } catch (error) {
-      if (error instanceof Error) {
-        if (error.message.includes('rejected') || error.message.includes('cancel')) {
-          throw new Error('Transaction rejected by user');
-        }
-        throw error;
+      const msg = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+      if (msg.includes('reject') || msg.includes('cancel') || msg.includes('denied') || msg.includes('user')) {
+        throw new Error('Transaction rejected');
       }
       throw new Error('Failed to send transaction');
     }

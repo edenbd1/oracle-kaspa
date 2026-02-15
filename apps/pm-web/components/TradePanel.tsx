@@ -3,8 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
-import { Card, CardHeader, CardContent } from './ui/Card';
-import { Badge } from './ui/Badge';
+import { WalletModal } from './WalletModal';
 import { useWallet } from '@/lib/hooks/useWallet';
 import { useQuote } from '@/lib/hooks/useQuote';
 import { executeTrade } from '@/lib/api';
@@ -12,15 +11,37 @@ import { sendKaspa, PLATFORM_ADDRESS } from '@/lib/wallet-providers';
 import { formatKas, formatCents, formatProbability, classNames } from '@/lib/utils';
 import type { Market, TradeSide, TradeAction } from '@/lib/types';
 
-// Transaction state machine
-type TxState = 'idle' | 'signing' | 'tx_pending' | 'tx_confirmed' | 'error';
+type TxState = 'idle' | 'signing' | 'processing' | 'confirmed' | 'error';
 
-// Slippage options as fractions (0.01 = 1%)
-const SLIPPAGE_OPTIONS = [0.005, 0.01, 0.03, 0.05, 0.10]; // 0.5%, 1%, 3%, 5%, 10%
+const QUICK_AMOUNTS = [5, 10, 25, 50];
 
 interface TradePanelProps {
   market: Market;
   onTradeComplete?: () => void;
+}
+
+function TxLink({ txid, label }: { txid: string; label: string }) {
+  // Extract txid from JSON object if needed
+  let cleanTxid = txid;
+  if (txid.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(txid);
+      cleanTxid = parsed.id || txid;
+    } catch {
+      // Not JSON
+    }
+  }
+  const explorerUrl = `https://tn10.kaspa.stream/transactions/${cleanTxid}`;
+  return (
+    <a
+      href={explorerUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-primary hover:underline font-mono text-[10px]"
+    >
+      {label}: {cleanTxid.slice(0, 16)}...
+    </a>
+  );
 }
 
 export function TradePanel({ market, onTradeComplete }: TradePanelProps) {
@@ -28,78 +49,20 @@ export function TradePanel({ market, onTradeComplete }: TradePanelProps) {
   const [side, setSide] = useState<TradeSide>('YES');
   const [action, setAction] = useState<TradeAction>('BUY');
   const [amount, setAmount] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [txState, setTxState] = useState<TxState>('idle');
-  const [pendingTxId, setPendingTxId] = useState<string | null>(null);
-  const [maxSlippage, setMaxSlippage] = useState(0.05); // 5% default
+  const [paymentTxId, setPaymentTxId] = useState<string | null>(null);
+  const [showPaymentLink, setShowPaymentLink] = useState(false);
+  const [tokenTxId, setTokenTxId] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [warning, setWarning] = useState('');
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [successMsg, setSuccessMsg] = useState('');
+  const [showWalletModal, setShowWalletModal] = useState(false);
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Cleanup timers on unmount
   useEffect(() => {
     return () => {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
     };
   }, []);
-
-  // Check if transaction is confirmed via Kaspa API
-  const checkTxConfirmed = async (txid: string): Promise<boolean> => {
-    try {
-      // Use testnet or mainnet API based on address prefix
-      const isTestnet = address?.startsWith('kaspatest:');
-      const apiBase = isTestnet
-        ? 'https://api-tn10.kaspa.org'
-        : 'https://api.kaspa.org';
-
-      const response = await fetch(`${apiBase}/transactions/${txid}`);
-      if (!response.ok) return false;
-
-      const data = await response.json();
-      // Transaction is confirmed if it has a block_time
-      return !!data.block_time;
-    } catch {
-      return false;
-    }
-  };
-
-  // Start polling for transaction confirmation
-  const startTxPolling = (txid: string) => {
-    setPendingTxId(txid);
-    setTxState('tx_pending');
-
-    // Clear any existing timers
-    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-
-    // Poll every 2 seconds
-    pollIntervalRef.current = setInterval(async () => {
-      const confirmed = await checkTxConfirmed(txid);
-      if (confirmed) {
-        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-        if (timeoutRef.current) clearTimeout(timeoutRef.current);
-        setTxState('tx_confirmed');
-        // Refresh wallet balance immediately
-        refreshWallet();
-        // Auto-reset to idle after 2s
-        setTimeout(() => {
-          setTxState('idle');
-          setPendingTxId(null);
-        }, 2000);
-      }
-    }, 2000);
-
-    // Timeout after 30s
-    timeoutRef.current = setTimeout(() => {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-      setTxState('idle');
-      setPendingTxId(null);
-      setWarning('Transaction may still be processing. Check your wallet.');
-    }, 30000);
-  };
 
   const numAmount = parseFloat(amount) || 0;
   const { quote, isLoading: quoteLoading } = useQuote({
@@ -107,390 +70,378 @@ export function TradePanel({ market, onTradeComplete }: TradePanelProps) {
     side,
     action,
     amount: numAmount,
-    enabled: isConnected && numAmount > 0,
+    enabled: numAmount > 0,
   });
 
   const isNonCustodial = walletType === 'kastle' || walletType === 'kasware';
   const isDemo = walletType === 'demo';
 
-  const handleSubmit = async () => {
-    if (!isConnected || !address) {
-      setError('Please connect your wallet first');
-      return;
-    }
-
-    if (numAmount <= 0) {
-      setError('Please enter an amount');
-      return;
-    }
-
-    // Block if tx is pending
-    if (txState !== 'idle') {
-      setError('Please wait for the current transaction to complete');
-      return;
-    }
-
-    // For demo mode, check platform balance
-    if (isDemo && action === 'BUY' && numAmount > balance) {
-      setError('Insufficient balance');
-      return;
-    }
-
-    // For non-custodial, check platform address is configured
-    if (isNonCustodial && action === 'BUY' && !PLATFORM_ADDRESS) {
-      setError('Platform address not configured. Set NEXT_PUBLIC_PLATFORM_ADDRESS in .env.local');
-      return;
-    }
-
-    setIsSubmitting(true);
-    setError('');
-    setSuccess('');
-    setWarning('');
-
+  const callTradeApi = async (txid?: string, attempt = 1): Promise<boolean> => {
     try {
-      let txid: string | undefined;
-
-      console.log('[TradePanel] Starting trade:', { isNonCustodial, action, walletType, numAmount });
-
-      // Non-custodial: Send KAS via wallet for BUY orders
-      if (isNonCustodial && action === 'BUY' && walletType) {
-        setTxState('signing');
-
-        // Create payload with trade info
-        const payload = JSON.stringify({
-          market: market.id,
-          side,
-          action: 'BUY',
-        });
-
-        console.log('[TradePanel] Sending KAS via wallet...');
-        // User pays only the trade amount - platform pays mint fee internally
-        txid = await sendKaspa(walletType, PLATFORM_ADDRESS, numAmount, payload);
-        console.log('[TradePanel] Transaction sent, txid:', txid);
-
-        // Start polling for confirmation
-        startTxPolling(txid);
-      }
-
-      console.log('[TradePanel] Calling executeTrade with txid:', txid);
-      // Execute trade on backend
       const result = await executeTrade({
         marketId: market.id,
-        address,
+        address: address!,
         side,
         action,
         ...(action === 'BUY' ? { kasAmount: numAmount } : { sharesAmount: numAmount }),
-        txid, // Include txid for non-custodial verification
-        maxSlippage, // Pass slippage tolerance
+        txid,
       });
 
       if (result.ok) {
+        // Trade confirmed!
+        setTxState('confirmed');
         const shares = result.sharesFilled?.toFixed(2) || '?';
         const kas = (result.kasSpent || result.kasReceived || 0).toFixed(2);
-
-        if (txid) {
-          setSuccess(
-            `${action === 'BUY' ? 'Bought' : 'Sold'} ${shares} ${side} shares for ${kas} KAS\nTx: ${txid}`
-          );
-        } else {
-          setSuccess(
-            action === 'BUY'
-              ? `Bought ${shares} ${side} shares for ${kas} KAS`
-              : `Sold ${shares} ${side} shares for ${kas} KAS`
-          );
+        setSuccessMsg(`${action === 'BUY' ? 'Bought' : 'Sold'} ${shares} ${side} for ${kas} KAS`);
+        if (result.tokenMinted?.txid) {
+          setTokenTxId(result.tokenMinted.txid);
         }
         setAmount('');
         await refreshWallet();
         onTradeComplete?.();
-      } else {
-        setError(result.error || 'Trade failed');
-        // Reset tx state on error (if not polling)
-        if (!isNonCustodial || action !== 'BUY') {
+        // Reset after showing confirmation
+        setTimeout(() => {
           setTxState('idle');
-        }
+          setPaymentTxId(null);
+          setShowPaymentLink(false);
+          setTokenTxId(null);
+          setSuccessMsg('');
+        }, 5000);
+        return true;
+      } else {
+        // API returned an error but not a crash
+        setError(result.error || 'Trade failed');
+        setTxState('error');
+        setTimeout(() => setTxState('idle'), 3000);
+        return false;
       }
     } catch (err) {
+      // API crashed (500) — retry if we have a payment TX (KAS already sent)
+      if (txid && attempt < 5) {
+        // Retry after delay — the API might need time to process
+        return new Promise((resolve) => {
+          retryTimeoutRef.current = setTimeout(async () => {
+            const ok = await callTradeApi(txid, attempt + 1);
+            resolve(ok);
+          }, attempt * 2000);
+        });
+      }
+      // No txid or max retries — show error
       setError(err instanceof Error ? err.message : 'Trade failed');
       setTxState('error');
-      // Auto-reset to idle after 3s on error
       setTimeout(() => setTxState('idle'), 3000);
-    } finally {
-      setIsSubmitting(false);
+      return false;
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!isConnected || !address) { setError('Connect your wallet first'); return; }
+    if (numAmount <= 0) { setError('Enter an amount'); return; }
+    if (txState !== 'idle') return;
+    if (isDemo && action === 'BUY' && numAmount > balance) { setError('Insufficient balance'); return; }
+    if (isNonCustodial && action === 'BUY' && !PLATFORM_ADDRESS) { setError('Platform address not configured'); return; }
+
+    setError('');
+    setSuccessMsg('');
+    setPaymentTxId(null);
+    setShowPaymentLink(false);
+    setTokenTxId(null);
+
+    try {
+      let txid: string | undefined;
+
+      if (isNonCustodial && action === 'BUY' && walletType) {
+        setTxState('signing');
+        const payload = JSON.stringify({ market: market.id, side, action: 'BUY' });
+        txid = await sendKaspa(walletType, PLATFORM_ADDRESS, numAmount, payload);
+        setPaymentTxId(txid);
+        // Delay showing the link so the explorer has time to index the tx
+        setTimeout(() => setShowPaymentLink(true), 3000);
+        setTxState('processing');
+      } else {
+        setTxState('processing');
+      }
+
+      await callTradeApi(txid);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Trade failed';
+      if (msg.toLowerCase().includes('rejected')) {
+        // User rejected in wallet — just go back to idle quietly
+        setError('Transaction rejected');
+        setTxState('idle');
+        setTimeout(() => setError(''), 2000);
+      } else {
+        setError(msg);
+        setTxState('error');
+        setTimeout(() => setTxState('idle'), 3000);
+      }
     }
   };
 
   const isResolved = market.status === 'RESOLVED';
-
-  // Check if slippage exceeds tolerance (quote.priceImpact is already a percentage like 5.0 for 5%)
-  const slippageExceeded = quote && (quote.priceImpact / 100) > maxSlippage;
-
-  // Can trade only when idle and not submitting
-  const canTrade = txState === 'idle' && !isSubmitting && !slippageExceeded && numAmount > 0;
+  const canTrade = txState === 'idle' && numAmount > 0;
+  const isWorking = txState === 'signing' || txState === 'processing';
 
   const getButtonText = () => {
     if (!isConnected) return 'Connect Wallet';
     if (txState === 'signing') return 'Sign in Wallet...';
-    if (txState === 'tx_pending') return 'Confirming...';
-    if (txState === 'tx_confirmed') return '✓ Confirmed';
+    if (txState === 'processing') return 'Processing...';
+    if (txState === 'confirmed') return 'Confirmed!';
     if (txState === 'error') return 'Retry';
-    if (slippageExceeded) return 'Slippage Too High';
-    if (isNonCustodial && action === 'BUY') {
-      return `${action} ${side} (Sign Tx)`;
-    }
     return `${action} ${side}`;
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold">Trade</h3>
-          {isNonCustodial && (
-            <Badge variant="success">Non-Custodial</Badge>
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      {/* Side toggle - full width tabs */}
+      <div className="grid grid-cols-2">
+        <button
+          onClick={() => setSide('YES')}
+          className={classNames(
+            'py-4 text-sm font-semibold transition-all border-b-2',
+            side === 'YES'
+              ? 'text-yes border-yes bg-yes/5'
+              : 'text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/30'
           )}
-          {isDemo && (
-            <Badge variant="warning">Demo Mode</Badge>
+        >
+          YES {Math.round((market.price_yes ?? 0.5) * 100)}\u00a2
+        </button>
+        <button
+          onClick={() => setSide('NO')}
+          className={classNames(
+            'py-4 text-sm font-semibold transition-all border-b-2',
+            side === 'NO'
+              ? 'text-no border-no bg-no/5'
+              : 'text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/30'
           )}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
+        >
+          NO {Math.round((market.price_no ?? 0.5) * 100)}\u00a2
+        </button>
+      </div>
+
+      <div className="p-5 space-y-4">
         {isResolved ? (
-          <div className="text-center py-4 text-muted-foreground">
-            Market is resolved. Trading is closed.
+          <div className="text-center py-8 text-muted-foreground text-sm">
+            Market resolved. Trading closed.
           </div>
         ) : (
           <>
-            {/* Side toggle */}
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => setSide('YES')}
-                className={classNames(
-                  'py-2.5 px-4 rounded-lg font-medium transition-colors',
-                  side === 'YES'
-                    ? 'bg-success text-white'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                )}
-              >
-                YES
-              </button>
-              <button
-                onClick={() => setSide('NO')}
-                className={classNames(
-                  'py-2.5 px-4 rounded-lg font-medium transition-colors',
-                  side === 'NO'
-                    ? 'bg-destructive text-white'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                )}
-              >
-                NO
-              </button>
-            </div>
-
-            {/* Action toggle */}
-            <div className="grid grid-cols-2 gap-2">
+            {/* Buy/Sell toggle */}
+            <div className="flex bg-muted/50 rounded-lg p-0.5">
               <button
                 onClick={() => setAction('BUY')}
                 className={classNames(
-                  'py-2 px-4 rounded-lg text-sm font-medium transition-colors',
+                  'flex-1 py-2 text-sm font-medium rounded-md transition-all',
                   action === 'BUY'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
                 )}
               >
-                BUY
+                Buy
               </button>
               <button
                 onClick={() => setAction('SELL')}
                 className={classNames(
-                  'py-2 px-4 rounded-lg text-sm font-medium transition-colors',
+                  'flex-1 py-2 text-sm font-medium rounded-md transition-all',
                   action === 'SELL'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
                 )}
               >
-                SELL
+                Sell
               </button>
             </div>
 
-            {/* Amount input */}
-            <Input
-              label={action === 'BUY' ? 'Amount (KAS)' : 'Shares to sell'}
-              type="number"
-              placeholder="0.00"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              suffix={action === 'BUY' ? 'KAS' : 'shares'}
-            />
-
-            {/* Balance info */}
-            {isConnected && action === 'BUY' && (
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">
-                  {isDemo ? 'Platform Balance:' : 'Your Wallet Balance:'}
-                </span>
-                {isDemo ? (
+            {/* Amount */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                  {action === 'BUY' ? 'Amount' : 'Shares'}
+                </label>
+                {isConnected && action === 'BUY' && (
                   <button
-                    onClick={() => setAmount(balance.toFixed(2))}
-                    className="text-primary hover:underline"
+                    onClick={() => balance > 0 && setAmount(balance.toFixed(2))}
+                    className="text-xs text-primary hover:underline"
                   >
-                    {formatKas(balance)}
+                    {balance === -1 ? '' : `Balance: ${formatKas(balance, 'compact')}`}
                   </button>
-                ) : balance === -1 ? (
-                  <span className="text-muted-foreground">Check wallet</span>
-                ) : (
-                  <span className="font-medium">{formatKas(balance)}</span>
                 )}
               </div>
-            )}
+              <Input
+                type="number"
+                placeholder="0"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                suffix={action === 'BUY' ? 'KAS' : 'shares'}
+              />
+              {/* Quick amount buttons */}
+              {action === 'BUY' && (
+                <div className="flex gap-1.5 mt-2">
+                  {QUICK_AMOUNTS.map((qa) => (
+                    <button
+                      key={qa}
+                      onClick={() => setAmount(String(qa))}
+                      className={classNames(
+                        'flex-1 py-1.5 text-xs font-medium rounded-md transition-colors',
+                        amount === String(qa)
+                          ? 'bg-primary/15 text-primary border border-primary/30'
+                          : 'bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted'
+                      )}
+                    >
+                      {qa}
+                    </button>
+                  ))}
+                </div>
+              )}
 
-            {/* Slippage selector */}
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Max slippage:</span>
-              <div className="flex gap-1">
-                {SLIPPAGE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt}
-                    onClick={() => setMaxSlippage(opt)}
-                    className={classNames(
-                      'px-2 py-1 text-xs rounded transition-colors',
-                      maxSlippage === opt
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                    )}
-                  >
-                    {(opt * 100).toFixed(1)}%
-                  </button>
-                ))}
-              </div>
+              {/* To win */}
+              {action === 'BUY' && quote && numAmount > 0 && txState === 'idle' && (
+                <div className="mt-3 flex items-center justify-between px-4 py-3 rounded-xl bg-yes/5 border border-yes/15">
+                  <span className="text-sm text-muted-foreground">To win</span>
+                  <span className={classNames('text-lg font-bold', side === 'YES' ? 'text-yes' : 'text-no')}>
+                    {formatKas(quote.shares, 'compact')}
+                  </span>
+                </div>
+              )}
             </div>
 
-            {/* Non-custodial info */}
-            {isNonCustodial && action === 'BUY' && numAmount > 0 && (
-              <div className="bg-primary/10 rounded-lg p-3 text-sm">
-                <div className="flex items-center gap-2 text-primary font-medium mb-1">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Non-Custodial Trade
-                </div>
-                <p className="text-muted-foreground">
-                  Your wallet will prompt you to sign a transaction sending {numAmount} KAS to the platform.
-                </p>
-              </div>
-            )}
-
-            {/* SELL not supported for non-custodial yet */}
+            {/* Non-custodial sell warning */}
             {isNonCustodial && action === 'SELL' && (
-              <div className="bg-warning/10 rounded-lg p-3 text-sm">
-                <div className="flex items-center gap-2 text-warning font-medium mb-1">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
-                  Selling Coming Soon
-                </div>
-                <p className="text-muted-foreground">
-                  Non-custodial selling requires server-side signing. Use demo mode to test sells.
-                </p>
+              <div className="bg-warning/10 border border-warning/20 rounded-lg p-3 text-xs text-warning">
+                Non-custodial selling coming soon. Use demo mode to test.
               </div>
             )}
 
             {/* Quote preview */}
-            {quote && (
-              <div className="bg-muted/50 rounded-lg p-3 space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">You {action === 'BUY' ? 'receive' : 'sell'}:</span>
-                  <span className="font-medium">{quote.shares.toFixed(2)} {side} shares</span>
+            {quote && txState === 'idle' && (
+              <div className="rounded-xl border border-border divide-y divide-border text-sm overflow-hidden">
+                <div className="flex justify-between px-4 py-2.5">
+                  <span className="text-muted-foreground">You {action === 'BUY' ? 'get' : 'sell'}</span>
+                  <span className="font-semibold">{quote.shares.toFixed(2)} {side}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Avg price:</span>
-                  <span className="font-medium">{formatCents(quote.avgPrice)}</span>
+                <div className="flex justify-between px-4 py-2.5">
+                  <span className="text-muted-foreground">Avg price</span>
+                  <span className="font-medium font-mono">{formatCents(quote.avgPrice)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Trading fee:</span>
-                  <span>{formatKas(quote.fee)}</span>
+                <div className="flex justify-between px-4 py-2.5">
+                  <span className="text-muted-foreground">Fee</span>
+                  <span className="font-mono">{formatKas(quote.fee, 'compact')}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Price impact:</span>
-                  <span className={quote.priceImpact > 5 ? 'text-warning' : ''}>
-                    {quote.priceImpact.toFixed(2)}%
+                <div className="flex justify-between px-4 py-2.5">
+                  <span className="text-muted-foreground">Impact</span>
+                  <span className={classNames('font-mono', quote.priceImpact > 5 ? 'text-warning font-semibold' : '')}>
+                    {quote.priceImpact.toFixed(1)}%
                   </span>
                 </div>
-                <hr className="border-border" />
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Price after trade:</span>
-                  <span className="font-medium">
+                <div className="flex justify-between px-4 py-2.5 bg-muted/20">
+                  <span className="text-muted-foreground">After</span>
+                  <span className="font-semibold">
                     {formatProbability(side === 'YES' ? quote.priceAfter : 1 - quote.priceAfter)} YES
                   </span>
                 </div>
               </div>
             )}
 
-            {quoteLoading && numAmount > 0 && (
-              <div className="text-center text-sm text-muted-foreground">
-                Loading quote...
+            {quoteLoading && numAmount > 0 && txState === 'idle' && (
+              <div className="text-center text-xs text-muted-foreground py-2">
+                Fetching quote...
               </div>
             )}
 
-            {/* Slippage warning */}
-            {slippageExceeded && quote && (
-              <div className="bg-warning/10 border border-warning rounded-lg p-3 text-sm">
-                <div className="flex items-center gap-2 text-warning font-medium mb-1">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
-                  High Price Impact
+            {/* Processing state */}
+            {txState === 'processing' && (
+              <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm font-medium text-foreground">Processing trade...</span>
                 </div>
-                <p className="text-muted-foreground">
-                  Impact: {quote.priceImpact.toFixed(2)}% exceeds your {(maxSlippage * 100).toFixed(1)}% tolerance.
-                  Increase your max slippage or reduce trade size.
-                </p>
+                {paymentTxId && showPaymentLink && (
+                  <div className="pl-6">
+                    <TxLink txid={paymentTxId} label="Payment TX" />
+                  </div>
+                )}
               </div>
             )}
 
-            {/* Pending transaction badge */}
-            {txState === 'tx_pending' && pendingTxId && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">
-                <span className="animate-pulse">⏳</span>
-                <span>Transaction pending</span>
-                <code className="text-[10px] font-mono">{pendingTxId.slice(0, 8)}...</code>
+            {/* Signing state */}
+            {txState === 'signing' && (
+              <div className="bg-primary/5 border border-primary/20 rounded-xl p-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm font-medium text-foreground">Approve in your wallet...</span>
+                </div>
               </div>
             )}
 
-            {error && (
-              <div className="text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">
+            {/* Confirmed state */}
+            {txState === 'confirmed' && (
+              <div className="bg-yes/5 border border-yes/20 rounded-xl p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-yes" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-sm font-medium text-yes">{successMsg}</span>
+                </div>
+                {paymentTxId && showPaymentLink && (
+                  <div className="pl-6">
+                    <TxLink txid={paymentTxId} label="Payment TX" />
+                  </div>
+                )}
+                {tokenTxId && (
+                  <div className="pl-6">
+                    <TxLink txid={tokenTxId} label="Token TX" />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Error (only for real errors, not in-flight) */}
+            {error && txState !== 'processing' && txState !== 'signing' && (
+              <div className="text-xs text-no bg-no/10 rounded-lg px-3 py-2.5">
                 {error}
               </div>
             )}
 
-            {warning && (
-              <div className="text-sm text-warning bg-warning/10 rounded-lg px-3 py-2">
-                {warning}
-              </div>
+            {/* Submit */}
+            {!isConnected ? (
+              <Button
+                className="w-full"
+                size="lg"
+                variant={side === 'YES' ? 'success' : 'danger'}
+                onClick={() => setShowWalletModal(true)}
+              >
+                Connect Wallet
+              </Button>
+            ) : (
+              <Button
+                className={classNames(
+                  'w-full',
+                  canTrade && side === 'YES' && 'glow-yes',
+                  canTrade && side === 'NO' && 'glow-no'
+                )}
+                size="lg"
+                variant={side === 'YES' ? 'success' : 'danger'}
+                onClick={handleSubmit}
+                isLoading={isWorking}
+                disabled={!canTrade || (isNonCustodial && action === 'SELL')}
+              >
+                {getButtonText()}
+              </Button>
             )}
 
-            {success && (
-              <div className="text-sm text-success bg-success/10 rounded-lg px-3 py-2 whitespace-pre-line">
-                {success}
+            {/* Wallet badge */}
+            {isConnected && (
+              <div className="text-center">
+                <span className="text-[10px] text-muted-foreground">
+                  {isNonCustodial ? 'Non-custodial' : 'Demo mode'}
+                </span>
               </div>
             )}
-
-            <Button
-              className="w-full"
-              size="lg"
-              variant={slippageExceeded ? 'warning' : side === 'YES' ? 'success' : 'danger'}
-              onClick={handleSubmit}
-              isLoading={isSubmitting || txState === 'signing' || txState === 'tx_pending'}
-              disabled={
-                !isConnected ||
-                !canTrade ||
-                (isNonCustodial && action === 'SELL')
-              }
-            >
-              {getButtonText()}
-            </Button>
           </>
         )}
-      </CardContent>
-    </Card>
+      </div>
+
+      <WalletModal isOpen={showWalletModal} onClose={() => setShowWalletModal(false)} />
+    </div>
   );
 }

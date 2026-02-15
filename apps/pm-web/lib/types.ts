@@ -108,8 +108,8 @@ export interface TradeResult {
   kasReceived?: number;
   feePaid?: number;
   newBalance?: number;
-  tokenMinted?: { ticker: string; amount: number };
-  tokenBurned?: { ticker: string; amount: number };
+  tokenMinted?: { ticker: string; amount: number; txid?: string };
+  tokenBurned?: { ticker: string; amount: number; txid?: string };
   txid?: string; // On-chain transaction ID for non-custodial trades
 }
 

@@ -49,20 +49,32 @@ export function Sparkline({ data, width = 80, height = 30, className }: Sparklin
 
   const pathD = `M ${points.join(' L ')}`;
 
-  // Determine trend color
+  // Fill area
+  const firstX = padding;
+  const lastX = padding + chartWidth;
+  const areaD = `${pathD} L ${lastX},${height} L ${firstX},${height} Z`;
+
   const firstPrice = prices[0];
   const lastPrice = prices[prices.length - 1];
   const isUp = lastPrice >= firstPrice;
-  const strokeColor = isUp ? 'var(--success)' : 'var(--destructive)';
+  const strokeColor = isUp ? 'var(--yes)' : 'var(--no)';
+  const fillColor = isUp ? 'var(--yes)' : 'var(--no)';
 
   return (
     <div className={className} style={{ width, height }}>
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full">
+        <defs>
+          <linearGradient id={`sparkFill-${isUp ? 'up' : 'down'}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={fillColor} stopOpacity="0.15" />
+            <stop offset="100%" stopColor={fillColor} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={areaD} fill={`url(#sparkFill-${isUp ? 'up' : 'down'})`} />
         <path
           d={pathD}
           fill="none"
           stroke={strokeColor}
-          strokeWidth="1.5"
+          strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
         />

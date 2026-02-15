@@ -122,6 +122,7 @@ export interface KRC20TokenInfo {
   threshold: number;        // e.g., 130000
   market_index: string;     // e.g., "A", "B", "C"
   total_supply: number;     // Current total supply
+  platform_balance: number; // Tokens held by platform (available for transfer to users)
   decimals: number;         // Token decimals (8 for KAS compatibility)
   deployed_at: number;      // Timestamp of deployment
   deployed_txid: string;    // Mock transaction ID

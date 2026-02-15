@@ -12,7 +12,7 @@ export function ProbabilityChart({ data, height = 200 }: ProbabilityChartProps) 
   if (!data || data.length === 0) {
     return (
       <div
-        className="flex items-center justify-center bg-muted/30 rounded-lg text-muted-foreground"
+        className="flex items-center justify-center bg-muted/20 rounded-lg text-muted-foreground text-sm"
         style={{ height }}
       >
         No price history available
@@ -37,9 +37,12 @@ export function ProbabilityChart({ data, height = 200 }: ProbabilityChartProps) 
   });
 
   const pathD = `M ${points.map((p) => `${p.x},${p.y}`).join(' L ')}`;
-
-  // Create area path
   const areaD = `${pathD} L ${points[points.length - 1].x},${padding.top + chartHeight} L ${points[0].x},${padding.top + chartHeight} Z`;
+
+  // Grid lines at 25/50/75%
+  const gridValues = [0.25, 0.5, 0.75].filter(
+    (v) => v >= minPrice && v <= maxPrice
+  );
 
   // Y-axis labels
   const yLabels = [0, 0.25, 0.5, 0.75, 1].filter(
@@ -50,65 +53,92 @@ export function ProbabilityChart({ data, height = 200 }: ProbabilityChartProps) 
     <div className="w-full overflow-hidden">
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full" preserveAspectRatio="xMidYMid meet">
         {/* Grid lines */}
-        {yLabels.map((value) => {
+        {gridValues.map((value) => {
           const y = padding.top + chartHeight - ((value - minPrice) / range) * chartHeight;
           return (
-            <g key={value}>
-              <line
-                x1={padding.left}
-                y1={y}
-                x2={width - padding.right}
-                y2={y}
-                stroke="var(--border)"
-                strokeDasharray="4 4"
-              />
-              <text
-                x={padding.left - 8}
-                y={y}
-                textAnchor="end"
-                dominantBaseline="middle"
-                fill="var(--muted-foreground)"
-                fontSize="12"
-              >
-                {Math.round(value * 100)}%
-              </text>
-            </g>
+            <line
+              key={`grid-${value}`}
+              x1={padding.left}
+              y1={y}
+              x2={width - padding.right}
+              y2={y}
+              stroke="var(--border)"
+              strokeWidth="1"
+              strokeDasharray="4 4"
+              opacity="0.5"
+            />
           );
         })}
 
-        {/* 50% reference line */}
+        {/* Y-axis labels */}
+        {yLabels.map((value) => {
+          const y = padding.top + chartHeight - ((value - minPrice) / range) * chartHeight;
+          return (
+            <text
+              key={`label-${value}`}
+              x={padding.left - 8}
+              y={y}
+              textAnchor="end"
+              dominantBaseline="middle"
+              fill="var(--muted-foreground)"
+              fontSize="11"
+              fontFamily="ui-monospace, monospace"
+            >
+              {Math.round(value * 100)}%
+            </text>
+          );
+        })}
+
+        {/* 50% reference line (stronger) */}
         {minPrice < 0.5 && maxPrice > 0.5 && (
           <line
             x1={padding.left}
             y1={padding.top + chartHeight - ((0.5 - minPrice) / range) * chartHeight}
             x2={width - padding.right}
             y2={padding.top + chartHeight - ((0.5 - minPrice) / range) * chartHeight}
-            stroke="var(--muted)"
-            strokeWidth="2"
+            stroke="var(--border-light)"
+            strokeWidth="1.5"
           />
         )}
 
+        {/* Gradient definition */}
+        <defs>
+          <linearGradient id="chartAreaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.15" />
+            <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+
         {/* Area fill */}
-        <path d={areaD} fill="var(--success)" opacity="0.1" />
+        <path d={areaD} fill="url(#chartAreaGrad)" />
 
         {/* Line */}
         <path
           d={pathD}
           fill="none"
-          stroke="var(--success)"
-          strokeWidth="2"
+          stroke="var(--primary)"
+          strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
 
         {/* Current price dot */}
         {points.length > 0 && (
-          <circle
-            cx={points[points.length - 1].x}
-            cy={points[points.length - 1].y}
-            r="4"
-            fill="var(--success)"
-          />
+          <>
+            <circle
+              cx={points[points.length - 1].x}
+              cy={points[points.length - 1].y}
+              r="7"
+              fill="var(--primary)"
+              opacity="0.15"
+            />
+            <circle
+              cx={points[points.length - 1].x}
+              cy={points[points.length - 1].y}
+              r="3.5"
+              fill="var(--primary)"
+            />
+          </>
         )}
 
         {/* X-axis labels */}
@@ -120,6 +150,7 @@ export function ProbabilityChart({ data, height = 200 }: ProbabilityChartProps) 
               textAnchor="start"
               fill="var(--muted-foreground)"
               fontSize="11"
+              fontFamily="ui-monospace, monospace"
             >
               {formatTimeAgo(data[0].timestamp)}
             </text>
@@ -129,6 +160,7 @@ export function ProbabilityChart({ data, height = 200 }: ProbabilityChartProps) 
               textAnchor="end"
               fill="var(--muted-foreground)"
               fontSize="11"
+              fontFamily="ui-monospace, monospace"
             >
               Now
             </text>

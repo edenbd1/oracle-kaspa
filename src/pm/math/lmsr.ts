@@ -39,9 +39,10 @@ export function cost(qYes: number, qNo: number, b: number): number {
 export function priceYes(qYes: number, qNo: number, b: number): number {
   if (b <= 0) throw new Error('Liquidity parameter b must be positive');
   const diff = (qNo - qYes) / b;
-  if (diff > 20) return 0.0001; // Avoid exactly 0
-  if (diff < -20) return 0.9999; // Avoid exactly 1
-  return 1 / (1 + Math.exp(diff));
+  if (diff > 20) return 0.01; // Floor at 1%
+  if (diff < -20) return 0.99; // Cap at 99%
+  const raw = 1 / (1 + Math.exp(diff));
+  return Math.min(0.99, Math.max(0.01, raw));
 }
 
 /**
@@ -229,7 +230,7 @@ export function getBuyQuote(
   const costKas = side === 'YES'
     ? costToBuyYes(qYes, qNo, b, shares)
     : costToBuyNo(qYes, qNo, b, shares);
-  const avgPrice = shares > 0 ? (costKas + fee) / shares : priceBefore;
+  const avgPrice = shares > 0 ? costKas / shares : priceBefore;
   const after = priceAfterTrade(qYes, qNo, b, shares, side);
   const priceAfter = side === 'YES' ? after.priceYes : after.priceNo;
   const priceImpact = priceBefore > 0 ? (priceAfter - priceBefore) / priceBefore : 0;

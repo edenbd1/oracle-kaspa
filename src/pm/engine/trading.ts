@@ -152,14 +152,6 @@ async function executeBuy(
   const feeBps = market.fee_bps ?? DEFAULT_FEE_BPS;
   const quote = getBuyQuote(market.q_yes, market.q_no, market.liquidity_b, kasAmount, side, feeBps);
 
-  // Check slippage
-  if (Math.abs(quote.priceImpact) > maxSlippage) {
-    return {
-      success: false,
-      error: `Price impact ${(quote.priceImpact * 100).toFixed(2)}% exceeds max slippage ${(maxSlippage * 100).toFixed(2)}%`
-    };
-  }
-
   // Deduct balance (only for custodial trades)
   if (!isNonCustodial) {
     balance.balance_kas -= kasAmount;
@@ -200,16 +192,11 @@ async function executeBuy(
   position.total_cost += kasAmount;
   upsertPosition(position);
 
-  // Record trade
-  const tradeSide: TradeSide = side === 'YES' ? 'BUY_YES' : 'BUY_NO';
-  const trade = createTrade(wallet, market.id, tradeSide, quote.shares, kasAmount, quote.avgPrice);
-  addTrade(trade);
-
-  // Mint KRC20 tokens
+  // Mint KRC20 tokens BEFORE recording trade (so failed mints don't leave orphans)
   let tokenMinted: TradeResult['tokenMinted'] = undefined;
   const tokenTicker = side === 'YES' ? market.yes_token_ticker : market.no_token_ticker;
   if (tokenTicker) {
-    const mintResult = await mint(tokenTicker, wallet, quote.shares, trade.id);
+    const mintResult = await mint(tokenTicker, wallet, quote.shares, `pending_${Date.now()}`);
     if (mintResult.success) {
       tokenMinted = {
         ticker: tokenTicker,
@@ -249,6 +236,11 @@ async function executeBuy(
       };
     }
   }
+
+  // Record trade only after successful mint
+  const tradeSide: TradeSide = side === 'YES' ? 'BUY_YES' : 'BUY_NO';
+  const trade = createTrade(wallet, market.id, tradeSide, quote.shares, kasAmount, quote.avgPrice);
+  addTrade(trade);
 
   return {
     success: true,
@@ -290,14 +282,6 @@ async function executeSell(
   // Get quote
   const feeBps = market.fee_bps ?? DEFAULT_FEE_BPS;
   const quote = getSellQuote(market.q_yes, market.q_no, market.liquidity_b, sharesAmount, side, feeBps);
-
-  // Check slippage
-  if (Math.abs(quote.priceImpact) > maxSlippage) {
-    return {
-      success: false,
-      error: `Price impact ${(quote.priceImpact * 100).toFixed(2)}% exceeds max slippage ${(maxSlippage * 100).toFixed(2)}%`
-    };
-  }
 
   // Credit balance
   let balance = getBalance(wallet);

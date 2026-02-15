@@ -3,8 +3,8 @@ import { WalletProvider } from '@/lib/hooks/useWallet';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Kaspa Prediction Market',
-  description: 'Trade on Bitcoin price predictions using KAS',
+  title: 'Threshold',
+  description: 'Binary outcome markets on Kaspa',
 };
 
 export default function RootLayout({

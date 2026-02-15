@@ -395,13 +395,13 @@ export function seedDemoData(): void {
 
   // Create markets at different thresholds (based on current BTC ~$77k)
   const thresholds = [150000, 140000, 130000, 120000, 110000, 100000, 90000, 80000];
-  const liquidityB = 200; // Higher liquidity for smoother price curves
+  const liquidityB = 5000; // Higher liquidity for smoother price curves
   const feeBps = 100; // 1% fee
 
   for (let i = 0; i < thresholds.length; i++) {
     const threshold = thresholds[i];
     const marketIndex = indexToLetter(i); // A, B, C, D, E, F, G, H
-    const market = createMarket(event.id, threshold, '>=', liquidityB, feeBps, event.asset, marketIndex);
+    const market = createMarket(event.id, threshold, '>=', liquidityB, feeBps, event.asset, marketIndex, event.deadline);
     addMarket(market);
     // Initialize price history with starting point
     addPricePoint(market.id, 0.5);
@@ -415,6 +415,8 @@ export function seedDemoData(): void {
       return (prefix + ts + rand).repeat(4).slice(0, 64);
     };
 
+    const PREMINT_SUPPLY = 100_000; // 100K tokens per side (10 on-chain mints with dec=8)
+
     const yesToken: KRC20TokenInfo = {
       ticker: yesTicker,
       display_name: `YES ${event.asset} $${threshold.toLocaleString()}`,
@@ -423,7 +425,8 @@ export function seedDemoData(): void {
       asset: event.asset,
       threshold: market.threshold_price,
       market_index: marketIndex,
-      total_supply: 0,
+      total_supply: PREMINT_SUPPLY,
+      platform_balance: PREMINT_SUPPLY,
       decimals: 8,
       deployed_at: timestamp,
       deployed_txid: genTxid('deploy-yes')
@@ -437,7 +440,8 @@ export function seedDemoData(): void {
       asset: event.asset,
       threshold: market.threshold_price,
       market_index: marketIndex,
-      total_supply: 0,
+      total_supply: PREMINT_SUPPLY,
+      platform_balance: PREMINT_SUPPLY,
       decimals: 8,
       deployed_at: timestamp,
       deployed_txid: genTxid('deploy-no')

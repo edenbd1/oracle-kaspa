@@ -2,20 +2,19 @@
 
 import Link from 'next/link';
 import { useMarket } from '@/lib/hooks/useMarkets';
-import { ProbabilityChart } from '@/components/ProbabilityChart';
 import { TradePanel } from '@/components/TradePanel';
-import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { formatPrice, formatKas, formatProbability, formatTimeAgo } from '@/lib/utils';
 import type { Trade } from '@/lib/types';
 
 function LoadingState() {
   return (
-    <div className="space-y-6 animate-pulse">
-      <div className="h-8 bg-muted rounded w-1/4" />
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 h-64 bg-muted rounded" />
-        <div className="h-96 bg-muted rounded" />
+    <div className="animate-pulse space-y-6">
+      <div className="h-5 bg-muted rounded w-24" />
+      <div className="h-10 bg-muted rounded w-72" />
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6">
+        <div className="h-80 bg-card border border-border rounded-xl" />
+        <div className="h-96 bg-card border border-border rounded-xl" />
       </div>
     </div>
   );
@@ -25,45 +24,39 @@ function RecentTradesTable({ trades }: { trades: Trade[] }) {
   if (!trades.length) {
     return (
       <div className="text-center py-8 text-muted-foreground text-sm">
-        No trades yet
+        No trades yet. Be the first!
       </div>
     );
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border text-left text-muted-foreground">
-            <th className="pb-2 font-medium">Type</th>
-            <th className="pb-2 font-medium">Shares</th>
-            <th className="pb-2 font-medium">Price</th>
-            <th className="pb-2 font-medium">Time</th>
-          </tr>
-        </thead>
-        <tbody>
-          {trades.map((trade) => (
-            <tr key={trade.id} className="border-b border-border/50">
-              <td className="py-2">
-                <span
-                  className={
-                    trade.side.includes('YES')
-                      ? 'text-success'
-                      : 'text-destructive'
-                  }
-                >
-                  {trade.side.replace('_', ' ')}
-                </span>
-              </td>
-              <td className="py-2">{trade.amount_tokens.toFixed(2)}</td>
-              <td className="py-2">{formatProbability(trade.price)}</td>
-              <td className="py-2 text-muted-foreground">
-                {formatTimeAgo(trade.created_at)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="space-y-0.5">
+      {trades.slice(0, 10).map((trade) => (
+        <div key={trade.id} className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-muted/30 transition-colors">
+          <div className="flex items-center gap-3">
+            <div className={`w-1.5 h-1.5 rounded-full ${trade.side.includes('YES') ? 'bg-yes' : 'bg-no'}`} />
+            <span className={`text-sm font-semibold ${trade.side.includes('YES') ? 'text-yes' : 'text-no'}`}>
+              {trade.side.replace('BUY_', '').replace('SELL_', '')}
+            </span>
+            <span className="text-sm text-muted-foreground">
+              {trade.amount_tokens.toFixed(1)} shares
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium font-mono">{formatProbability(trade.price)}</span>
+            <span className="text-xs text-muted-foreground">{formatTimeAgo(trade.created_at)}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StatItem({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
+  return (
+    <div>
+      <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">{label}</div>
+      <div className={`text-sm font-semibold ${valueClass || ''}`}>{value}</div>
     </div>
   );
 }
@@ -82,176 +75,136 @@ export default function MarketPage({
 
   if (error || !data) {
     return (
-      <Card>
-        <CardContent className="py-12 text-center">
-          <div className="text-destructive mb-2">Error loading market</div>
-          <div className="text-muted-foreground text-sm">
-            {error?.message || 'Market not found'}
-          </div>
-          <Link
-            href="/pm"
-            className="inline-block mt-4 text-primary hover:underline"
-          >
-            Back to markets
-          </Link>
-        </CardContent>
-      </Card>
+      <div className="flex flex-col items-center justify-center py-20">
+        <p className="text-foreground font-semibold mb-2">Market not found</p>
+        <p className="text-muted-foreground text-sm mb-4">
+          {error?.message || 'This market does not exist'}
+        </p>
+        <Link href="/pm" className="text-primary text-sm hover:underline">
+          Back to markets
+        </Link>
+      </div>
     );
   }
 
-  const { market, event, price_history, recent_trades } = data;
-  const direction = market.direction === '>=' ? '≥' : '≤';
+  const { market, event, recent_trades } = data;
+  const direction = market.direction === '>=' ? '\u2265' : '\u2264';
+  const priceYes = market.price_yes ?? 0.5;
+  const priceNo = market.price_no ?? 0.5;
+  const yesPercent = Math.round(priceYes * 100);
+  const noPercent = Math.round(priceNo * 100);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Link
-          href="/pm"
-          className="text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 19l-7-7 7-7"
-            />
+    <div className="space-y-6 animate-slide-in">
+      {/* Breadcrumb + header */}
+      <div>
+        <Link href="/pm" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
+          Markets
         </Link>
-        <div className="flex-1">
-          <h1 className="text-xl font-bold">
-            BTC {direction} {formatPrice(market.threshold_price)}
-          </h1>
-          {event && (
-            <p className="text-sm text-muted-foreground">{event.title}</p>
-          )}
+
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
+              BTC {direction} {formatPrice(market.threshold_price)}
+            </h1>
+            {event && (
+              <p className="text-sm text-muted-foreground mt-1">{event.title}</p>
+            )}
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {market.status === 'RESOLVED' ? (
+              <Badge variant={market.resolved_outcome === 'YES' ? 'success' : 'danger'}>
+                Resolved: {market.resolved_outcome}
+              </Badge>
+            ) : (
+              <Badge variant="default">Open</Badge>
+            )}
+          </div>
         </div>
-        <Badge
-          variant={market.status === 'RESOLVED' ? 'success' : 'default'}
-        >
-          {market.status}
-        </Badge>
-        {market.status === 'RESOLVED' && market.resolved_outcome && (
-          <Badge
-            variant={market.resolved_outcome === 'YES' ? 'success' : 'danger'}
-          >
-            {market.resolved_outcome}
-          </Badge>
-        )}
+
+        {/* Big probability display */}
+        <div className="flex items-center gap-6 mt-5">
+          <div className="flex items-center gap-3">
+            <div className="w-14 h-14 rounded-xl bg-yes/10 flex items-center justify-center">
+              <span className="text-2xl font-bold text-yes">{yesPercent}</span>
+            </div>
+            <div>
+              <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">YES</div>
+              <div className="text-lg font-bold text-yes">{yesPercent}%</div>
+            </div>
+          </div>
+          <div className="flex-1 h-3 rounded-full overflow-hidden flex">
+            <div
+              className="h-full bg-yes rounded-l-full transition-all duration-500"
+              style={{ width: `${yesPercent}%` }}
+            />
+            <div
+              className="h-full bg-no rounded-r-full transition-all duration-500"
+              style={{ width: `${noPercent}%` }}
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <div>
+              <div className="text-[11px] font-semibold text-muted-foreground text-right uppercase tracking-wider">NO</div>
+              <div className="text-lg font-bold text-no">{noPercent}%</div>
+            </div>
+            <div className="w-14 h-14 rounded-xl bg-no/10 flex items-center justify-center">
+              <span className="text-2xl font-bold text-no">{noPercent}</span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Main content grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left column - Chart and info */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Probability chart */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold">Probability</h2>
-                <div className="flex items-center gap-4 text-sm">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded bg-success" />
-                    <span>YES {formatProbability(market.price_yes ?? 0.5)}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded bg-destructive" />
-                    <span>NO {formatProbability(market.price_no ?? 0.5)}</span>
-                  </div>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <ProbabilityChart data={price_history} height={250} />
-            </CardContent>
-          </Card>
-
-          {/* Token info */}
-          <Card>
-            <CardHeader>
-              <h2 className="font-semibold">Token Info</h2>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <div className="text-muted-foreground mb-1">YES Token</div>
-                  <div className="font-mono text-success">
-                    {market.yes_token_ticker || 'N/A'}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground mb-1">NO Token</div>
-                  <div className="font-mono text-destructive">
-                    {market.no_token_ticker || 'N/A'}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground mb-1">YES Supply</div>
-                  <div>{market.q_yes.toFixed(2)}</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground mb-1">NO Supply</div>
-                  <div>{market.q_no.toFixed(2)}</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground mb-1">Volume</div>
-                  <div>{formatKas(market.volume)}</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground mb-1">Total Trades</div>
-                  <div>{market.trades_count}</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground mb-1">Fee</div>
-                  <div>{(market.fee_bps / 100).toFixed(1)}%</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground mb-1">Liquidity (b)</div>
-                  <div>{market.liquidity_b}</div>
-                </div>
-              </div>
-
-              {market.status === 'RESOLVED' && (
-                <div className="mt-4 pt-4 border-t border-border">
-                  <div className="text-muted-foreground mb-1">Resolved Price</div>
-                  <div className="font-medium">
-                    {market.resolved_price
-                      ? formatPrice(market.resolved_price)
-                      : 'N/A'}
-                  </div>
-                  {market.resolved_txid && (
-                    <div className="mt-2">
-                      <div className="text-muted-foreground mb-1">Resolution TXID</div>
-                      <div className="font-mono text-xs break-all">
-                        {market.resolved_txid}
-                      </div>
-                    </div>
-                  )}
-                </div>
+      {/* Main grid: content left, trade panel right */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6">
+        {/* Left: chart + info + trades */}
+        <div className="space-y-4">
+          {/* Stats grid */}
+          <div className="bg-card border border-border rounded-xl p-5">
+            <h2 className="text-[13px] font-semibold text-muted-foreground uppercase tracking-wider mb-4">Market Info</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
+              <StatItem label="Volume" value={formatKas(market.volume, 'compact')} />
+              <StatItem label="Trades" value={String(market.trades_count)} />
+              <StatItem label="Fee" value={`${(market.fee_bps / 100).toFixed(1)}%`} />
+              <StatItem label="Liquidity" value={`b=${market.liquidity_b}`} />
+              {market.yes_token_ticker && (
+                <StatItem label="YES Token" value={market.yes_token_ticker} valueClass="text-yes font-mono text-xs" />
               )}
-            </CardContent>
-          </Card>
+              {market.no_token_ticker && (
+                <StatItem label="NO Token" value={market.no_token_ticker} valueClass="text-no font-mono text-xs" />
+              )}
+              <StatItem label="YES Supply" value={market.q_yes.toFixed(1)} />
+              <StatItem label="NO Supply" value={market.q_no.toFixed(1)} />
+            </div>
+
+            {market.status === 'RESOLVED' && market.resolved_price && (
+              <div className="mt-5 pt-5 border-t border-border grid grid-cols-2 gap-4">
+                <StatItem label="Resolved at Price" value={formatPrice(market.resolved_price)} />
+                {market.resolved_txid && (
+                  <div>
+                    <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Resolution TX</div>
+                    <div className="text-xs font-mono text-primary truncate">
+                      {market.resolved_txid}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Recent trades */}
-          <Card>
-            <CardHeader>
-              <h2 className="font-semibold">Recent Trades</h2>
-            </CardHeader>
-            <CardContent>
-              <RecentTradesTable trades={recent_trades} />
-            </CardContent>
-          </Card>
+          <div className="bg-card border border-border rounded-xl p-5">
+            <h2 className="text-[13px] font-semibold text-muted-foreground uppercase tracking-wider mb-3">Recent Trades</h2>
+            <RecentTradesTable trades={recent_trades} />
+          </div>
         </div>
 
-        {/* Right column - Trade panel */}
-        <div>
-          <div className="sticky top-24">
+        {/* Right: trade panel (sticky sidebar) */}
+        <div className="lg:self-start">
+          <div className="sticky top-20">
             <TradePanel market={market} onTradeComplete={refresh} />
           </div>
         </div>

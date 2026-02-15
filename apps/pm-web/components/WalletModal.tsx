@@ -1,10 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useWallet } from '@/lib/hooks/useWallet';
-import { Button } from './ui/Button';
-import { Input } from './ui/Input';
-import { Card, CardHeader, CardContent } from './ui/Card';
 import type { WalletType } from '@/lib/wallet-providers';
 
 interface WalletModalProps {
@@ -12,39 +10,29 @@ interface WalletModalProps {
   onClose: () => void;
 }
 
-const WALLET_INFO: Record<string, { name: string; icon: string; installUrl: string }> = {
-  kastle: {
-    name: 'Kastle',
-    icon: '🏰',
-    installUrl: 'https://chromewebstore.google.com/detail/kastle/oambclflhjfppdmkghokjmpppmaebego',
-  },
-  kasware: {
-    name: 'KasWare',
-    icon: '💎',
-    installUrl: 'https://chromewebstore.google.com/detail/kasware-wallet/hklhheigdmpoolooomdihmhlpjjdbklf',
-  },
-};
+const KASWARE_INSTALL_URL = 'https://chromewebstore.google.com/detail/kasware-wallet/hklhheigdmpoolooomdihmhlpjjdbklf';
 
 export function WalletModal({ isOpen, onClose }: WalletModalProps) {
   const { connect, isConnecting, detectedWallets, refreshDetectedWallets } = useWallet();
-  const [customAddress, setCustomAddress] = useState('');
   const [error, setError] = useState('');
   const [connectingType, setConnectingType] = useState<WalletType | null>(null);
 
-  // Refresh detected wallets when modal opens
   useEffect(() => {
     if (isOpen) {
       refreshDetectedWallets();
     }
   }, [isOpen, refreshDetectedWallets]);
 
-  if (!isOpen) return null;
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
-  const handleConnect = async (type: WalletType, address?: string) => {
+  if (!isOpen || !mounted) return null;
+
+  const handleConnect = async (type: WalletType) => {
     try {
       setError('');
       setConnectingType(type);
-      await connect(type, address);
+      await connect(type);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to connect');
@@ -53,153 +41,86 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
     }
   };
 
-  const handleCustomConnect = () => {
-    if (!customAddress.trim()) {
-      setError('Please enter an address');
-      return;
-    }
-    handleConnect('demo', customAddress.trim());
-  };
+  const kaswareDetected = detectedWallets.some(w => w.type === 'kasware');
 
-  const handleInstallWallet = (type: string) => {
-    const info = WALLET_INFO[type];
-    if (info) {
-      window.open(info.installUrl, '_blank');
-    }
-  };
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 overflow-y-auto">
+      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-[201] w-full max-w-md bg-card border border-border rounded-2xl overflow-hidden my-auto animate-slide-in">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-border">
+          <h2 className="text-lg font-semibold">Connect Wallet</h2>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
 
-  const hasDetectedWallets = detectedWallets.length > 0;
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 overflow-y-auto">
-      <div className="fixed inset-0 bg-black/70 z-[100]" onClick={onClose} />
-      <Card className="relative z-[101] w-full max-w-md my-auto">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Connect Wallet</h2>
+        <div className="p-6 space-y-4">
+          {/* KasWare Wallet */}
+          {kaswareDetected ? (
             <button
-              onClick={onClose}
-              className="text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Detected Wallets */}
-          {hasDetectedWallets && (
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground mb-2">Detected Wallets</p>
-              {detectedWallets.map((wallet) => (
-                <Button
-                  key={wallet.type}
-                  variant="secondary"
-                  className="w-full justify-start gap-3"
-                  onClick={() => handleConnect(wallet.type)}
-                  isLoading={connectingType === wallet.type}
-                  disabled={isConnecting}
-                >
-                  <span className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center text-lg">
-                    {wallet.icon}
-                  </span>
-                  <span className="flex-1 text-left">{wallet.name}</span>
-                  <span className="text-xs text-success">Detected</span>
-                </Button>
-              ))}
-            </div>
-          )}
-
-          {/* Not Detected Wallets */}
-          {!hasDetectedWallets && (
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground mb-2">Install a Kaspa Wallet</p>
-              {Object.entries(WALLET_INFO).map(([type, info]) => (
-                <Button
-                  key={type}
-                  variant="secondary"
-                  className="w-full justify-start gap-3"
-                  onClick={() => handleInstallWallet(type)}
-                >
-                  <span className="w-8 h-8 bg-muted rounded-lg flex items-center justify-center text-lg">
-                    {info.icon}
-                  </span>
-                  <span className="flex-1 text-left">{info.name}</span>
-                  <span className="text-xs text-muted-foreground">Install →</span>
-                </Button>
-              ))}
-            </div>
-          )}
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-border" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">Or use demo</span>
-            </div>
-          </div>
-
-          {/* Demo Wallet */}
-          <div className="space-y-2">
-            <Button
-              variant="secondary"
-              className="w-full justify-start gap-3"
-              onClick={() => handleConnect('demo')}
-              isLoading={connectingType === 'demo'}
+              onClick={() => handleConnect('kasware')}
               disabled={isConnecting}
+              className="w-full flex items-center gap-4 p-4 bg-secondary rounded-xl border border-border hover:border-primary/40 hover:bg-card-hover transition-all disabled:opacity-50"
             >
-              <span className="w-8 h-8 bg-warning/20 rounded-lg flex items-center justify-center">
-                <span className="text-warning font-bold">D</span>
+              <span className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center text-2xl flex-shrink-0">
+                💎
               </span>
-              <span className="flex-1 text-left">Demo Wallet</span>
-              <span className="text-xs text-warning">1000 KAS</span>
-            </Button>
-          </div>
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-border" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">Or enter address</span>
-            </div>
-          </div>
-
-          {/* Custom Address */}
-          <div className="space-y-3">
-            <Input
-              label="Custom Address"
-              placeholder="kaspa:qz... or kaspatest:qz..."
-              value={customAddress}
-              onChange={(e) => setCustomAddress(e.target.value)}
-            />
-            <Button
-              variant="primary"
-              className="w-full"
-              onClick={handleCustomConnect}
-              isLoading={connectingType === 'demo' && customAddress.trim() !== ''}
-              disabled={!customAddress.trim() || isConnecting}
+              <div className="flex-1 text-left">
+                <div className="font-medium text-foreground">KasWare Wallet</div>
+                <div className="text-xs text-muted-foreground">Non-custodial browser wallet</div>
+              </div>
+              {connectingType === 'kasware' ? (
+                <svg className="animate-spin h-5 w-5 text-primary" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+              ) : (
+                <span className="text-[11px] font-semibold text-yes uppercase tracking-wider">Detected</span>
+              )}
+            </button>
+          ) : (
+            <button
+              onClick={() => window.open(KASWARE_INSTALL_URL, '_blank')}
+              className="w-full flex items-center gap-4 p-4 bg-secondary rounded-xl border border-border hover:border-border-light hover:bg-card-hover transition-all"
             >
-              Connect with Address
-            </Button>
+              <span className="w-12 h-12 bg-muted rounded-xl flex items-center justify-center text-2xl flex-shrink-0">
+                💎
+              </span>
+              <div className="flex-1 text-left">
+                <div className="font-medium text-foreground">KasWare Wallet</div>
+                <div className="text-xs text-muted-foreground">Install the browser extension</div>
+              </div>
+              <span className="text-xs text-muted-foreground">Install →</span>
+            </button>
+          )}
+
+          {/* More wallets coming soon */}
+          <div className="flex items-center gap-4 p-4 rounded-xl border border-dashed border-border/60">
+            <span className="w-12 h-12 bg-muted/30 rounded-xl flex items-center justify-center flex-shrink-0">
+              <svg className="w-6 h-6 text-muted-foreground/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+            </span>
+            <div className="flex-1 text-left">
+              <div className="font-medium text-muted-foreground/70">More wallets</div>
+              <div className="text-xs text-muted-foreground/50">Coming soon</div>
+            </div>
           </div>
 
           {error && (
-            <div className="text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">
+            <div className="text-sm text-no bg-no/10 rounded-lg px-3 py-2">
               {error}
             </div>
           )}
-
-          <p className="text-xs text-muted-foreground text-center">
-            New addresses receive 1000 KAS for demo trading.
-            {!hasDetectedWallets && (
-              <> Install <a href="https://chromewebstore.google.com/detail/kastle/oambclflhjfppdmkghokjmpppmaebego" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Kastle</a> for real wallet connection.</>
-            )}
-          </p>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }

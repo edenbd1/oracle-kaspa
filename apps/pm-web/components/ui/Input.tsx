@@ -22,20 +22,20 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           <input
             ref={ref}
             className={classNames(
-              'w-full bg-input border border-border rounded-lg px-3 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors',
-              suffix ? 'pr-12' : '',
-              error ? 'border-destructive focus:ring-destructive' : '',
+              'w-full h-11 bg-input border border-border rounded-lg px-3 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all',
+              suffix ? 'pr-14' : '',
+              error ? 'border-no focus:ring-no/50' : '',
               className
             )}
             {...props}
           />
           {suffix && (
-            <div className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground">
+            <div className="absolute inset-y-0 right-0 flex items-center pr-3 text-sm text-muted-foreground">
               {suffix}
             </div>
           )}
         </div>
-        {error && <p className="mt-1 text-sm text-destructive">{error}</p>}
+        {error && <p className="mt-1 text-sm text-no">{error}</p>}
       </div>
     );
   }
