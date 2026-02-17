@@ -127,14 +127,9 @@ export default function MarketPage({
 
         {/* Big probability display */}
         <div className="flex items-center gap-6 mt-5">
-          <div className="flex items-center gap-3">
-            <div className="w-14 h-14 rounded-xl bg-yes/10 flex items-center justify-center">
-              <span className="text-2xl font-bold text-yes">{yesPercent}</span>
-            </div>
-            <div>
-              <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">YES</div>
-              <div className="text-lg font-bold text-yes">{yesPercent}%</div>
-            </div>
+          <div>
+            <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">YES</div>
+            <div className="text-lg font-bold text-yes">{yesPercent}%</div>
           </div>
           <div className="flex-1 h-3 rounded-full overflow-hidden flex">
             <div
@@ -146,14 +141,9 @@ export default function MarketPage({
               style={{ width: `${noPercent}%` }}
             />
           </div>
-          <div className="flex items-center gap-3">
-            <div>
-              <div className="text-[11px] font-semibold text-muted-foreground text-right uppercase tracking-wider">NO</div>
-              <div className="text-lg font-bold text-no">{noPercent}%</div>
-            </div>
-            <div className="w-14 h-14 rounded-xl bg-no/10 flex items-center justify-center">
-              <span className="text-2xl font-bold text-no">{noPercent}</span>
-            </div>
+          <div>
+            <div className="text-[11px] font-semibold text-muted-foreground text-right uppercase tracking-wider">NO</div>
+            <div className="text-lg font-bold text-no">{noPercent}%</div>
           </div>
         </div>
       </div>

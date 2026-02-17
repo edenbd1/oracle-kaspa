@@ -204,7 +204,7 @@ export function TradePanel({ market, onTradeComplete }: TradePanelProps) {
               : 'text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/30'
           )}
         >
-          YES {Math.round((market.price_yes ?? 0.5) * 100)}\u00a2
+          YES {Math.round((market.price_yes ?? 0.5) * 100)}¢
         </button>
         <button
           onClick={() => setSide('NO')}
@@ -215,7 +215,7 @@ export function TradePanel({ market, onTradeComplete }: TradePanelProps) {
               : 'text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/30'
           )}
         >
-          NO {Math.round((market.price_no ?? 0.5) * 100)}\u00a2
+          NO {Math.round((market.price_no ?? 0.5) * 100)}¢
         </button>
       </div>
 
