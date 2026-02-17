@@ -491,7 +491,7 @@ export function seedDemoData(): void {
     'What price will Ethereum hit before March 1, 2026?',
     'ETH',
     deadline,
-    [5000, 4500, 4000, 3500, 3000, 2500, 2000],
+    [5500, 5000, 4500, 4000, 3500, 3000, 2500],
     liquidityB,
     feeBps
   );
