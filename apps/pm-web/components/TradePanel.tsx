@@ -429,14 +429,6 @@ export function TradePanel({ market, onTradeComplete }: TradePanelProps) {
               </Button>
             )}
 
-            {/* Wallet badge */}
-            {isConnected && (
-              <div className="text-center">
-                <span className="text-[10px] text-muted-foreground">
-                  {isNonCustodial ? 'Non-custodial' : 'Demo mode'}
-                </span>
-              </div>
-            )}
           </>
         )}
       </div>
