@@ -116,7 +116,11 @@ export async function main() {
       last_price: btcIndex.price,
       providers_ok: okCount,
       providers_total: btcResponses.length,
-      last_index_status: btcIndex.status
+      last_index_status: btcIndex.status,
+      last_eth_price: ethIndex.status !== 'STALE' ? ethIndex.price : null,
+      last_eth_status: ethIndex.status,
+      last_kas_price: kasIndex.status !== 'STALE' ? kasIndex.price : null,
+      last_kas_status: kasIndex.status
     });
 
     console.log(`  Done in ${Date.now() - tickStart}ms`);

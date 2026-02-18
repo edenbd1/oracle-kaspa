@@ -111,6 +111,25 @@ async function handleHealth(res: ServerResponse): Promise<void> {
   });
 }
 
+function handlePrices(res: ServerResponse): void {
+  const state = getOracleState();
+  sendJson(res, 200, {
+    updated_at: state.last_updated_at,
+    BTC: {
+      price: state.last_price,
+      status: state.last_index_status,
+    },
+    ETH: {
+      price: state.last_eth_price,
+      status: state.last_eth_status,
+    },
+    KAS: {
+      price: state.last_kas_price,
+      status: state.last_kas_status,
+    }
+  });
+}
+
 async function handleVerify(txid: string, res: ServerResponse): Promise<void> {
   const state = getOracleState();
   const network = state.network || 'testnet-10';
@@ -129,6 +148,12 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse): 
   // GET /health
   if (url === '/health') {
     await handleHealth(res);
+    return;
+  }
+
+  // GET /prices
+  if (url === '/prices') {
+    handlePrices(res);
     return;
   }
 
@@ -174,6 +199,7 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse): 
     error: 'Not found',
     endpoints: [
       'GET /health',
+      'GET /prices',
       'GET /latest',
       'GET /bundle/:h',
       'GET /verify/:txid'
