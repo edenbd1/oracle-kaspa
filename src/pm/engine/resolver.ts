@@ -57,24 +57,23 @@ export async function fetchOracleLatest(): Promise<OracleLatest | null> {
 }
 
 /**
- * Fetch ETH and KAS prices from CoinGecko.
+ * Fetch ETH and KAS prices from the oracle /prices endpoint.
+ * Avoids redundant CoinGecko/CMC calls — the oracle already aggregates these.
  */
 export async function fetchAssetPrices(): Promise<Record<string, number>> {
   const prices: Record<string, number> = {};
   try {
-    const res = await fetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=ethereum,kaspa&vs_currencies=usd'
-    );
+    const res = await fetch(`${ORACLE_API_BASE}/prices`);
     if (res.ok) {
       const data = await res.json() as {
-        ethereum?: { usd: number };
-        kaspa?: { usd: number };
+        ETH?: { price: number | null };
+        KAS?: { price: number | null };
       };
-      if (data.ethereum?.usd) prices['ETH'] = data.ethereum.usd;
-      if (data.kaspa?.usd) prices['KAS'] = data.kaspa.usd;
+      if (data.ETH?.price != null) prices['ETH'] = data.ETH.price;
+      if (data.KAS?.price != null) prices['KAS'] = data.KAS.price;
     }
   } catch (e) {
-    console.error('[Resolver] Failed to fetch ETH/KAS prices:', e);
+    console.error('[Resolver] Failed to fetch ETH/KAS prices from oracle:', e);
   }
   return prices;
 }
