@@ -12,6 +12,7 @@ export interface OracleState {
   providers_ok: number;
   providers_total: number;
   last_price: number | null;
+  last_index_status: 'OK' | 'DEGRADED' | 'STALE' | null;
 }
 
 // Global singleton state
@@ -23,7 +24,8 @@ const state: OracleState = {
   last_hash: null,
   providers_ok: 0,
   providers_total: 0,
-  last_price: null
+  last_price: null,
+  last_index_status: null
 };
 
 export function getOracleState(): OracleState {

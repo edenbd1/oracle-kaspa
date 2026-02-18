@@ -14,7 +14,8 @@ export interface IndexOutput {
   num_sources: number;
   dispersion: number;
   timestamp_local: number;
-  status: 'OK' | 'STALE';
+  status: 'OK' | 'DEGRADED' | 'STALE';
+  note?: string;  // set when status is DEGRADED (single-source fallback)
 }
 
 export interface RawBundle {

@@ -70,9 +70,12 @@ export async function main() {
     const h = hash.slice(0, 16);
     console.log(`  Bundle: ${h}...`);
 
-    // 4. Anchor if OK and connected
+    // 4. Anchor if at least 1 source is valid (OK or DEGRADED); skip only on STALE (0 sources)
     let txId: string | null = null;
-    if (index.status === 'OK') {
+    if (index.status === 'OK' || index.status === 'DEGRADED') {
+      if (index.status === 'DEGRADED' && index.note) {
+        console.log(`  Note: ${index.note}`);
+      }
       if (anchorConnected) {
         // Payload contains only: d, h, n, p (alphabetically sorted for deterministic CBOR)
         const payload: AnchorPayload = {
@@ -91,6 +94,7 @@ export async function main() {
         console.log(`  TX: skipped (no RPC connection)`);
       }
     } else {
+      // STALE: 0 valid sources — nothing to anchor
       console.log(`  SKIPPED (${index.status})`);
     }
 
@@ -106,7 +110,8 @@ export async function main() {
       last_hash: h,
       last_price: index.price,
       providers_ok: okCount,
-      providers_total: responses.length
+      providers_total: responses.length,
+      last_index_status: index.status
     });
 
     console.log(`  Done in ${Date.now() - tickStart}ms`);

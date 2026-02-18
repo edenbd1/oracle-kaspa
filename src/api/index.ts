@@ -53,6 +53,9 @@ async function handleHealth(res: ServerResponse): Promise<void> {
   }
 
   // Determine overall health status
+  // healthy:   n>=2, lag <60s
+  // degraded:  n==1 (DEGRADED index), or lag 60-120s
+  // unhealthy: n==0 (STALE/no price), or lag >120s, or node issues
   let status: 'healthy' | 'degraded' | 'unhealthy' = 'healthy';
   const issues: string[] = [];
 
@@ -62,14 +65,17 @@ async function handleHealth(res: ServerResponse): Promise<void> {
   } else if (lag_seconds !== null && lag_seconds > 120) {
     status = 'unhealthy';
     issues.push(`Lag too high: ${lag_seconds}s`);
-  } else if (lag_seconds !== null && lag_seconds > 90) {
-    status = 'degraded';
+  } else if (lag_seconds !== null && lag_seconds > 60) {
+    if (status === 'healthy') status = 'degraded';
     issues.push(`Lag elevated: ${lag_seconds}s`);
   }
 
   if (state.providers_ok === 0 && state.providers_total > 0) {
     status = 'unhealthy';
-    issues.push('All providers failed');
+    issues.push('All providers failed — no valid price');
+  } else if (state.last_index_status === 'DEGRADED') {
+    if (status === 'healthy') status = 'degraded';
+    issues.push(`Single-source price (${state.providers_ok}/${state.providers_total} providers OK)`);
   } else if (state.providers_ok < state.providers_total) {
     if (status === 'healthy') status = 'degraded';
     issues.push(`Only ${state.providers_ok}/${state.providers_total} providers OK`);
@@ -97,6 +103,7 @@ async function handleHealth(res: ServerResponse): Promise<void> {
       last_txid: state.last_txid,
       last_hash: state.last_hash,
       last_price: state.last_price,
+      last_index_status: state.last_index_status,
       providers_ok: state.providers_ok,
       providers_total: state.providers_total
     },

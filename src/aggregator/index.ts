@@ -38,12 +38,19 @@ export function aggregate(responses: ProviderResponse[], config: Config['aggrega
   const finalMedian = filteredPrices.length > 0 ? median(filteredPrices) : initialMedian;
 
   // 6. Check quorum
-  const status = filtered.length >= config.minValidSources ? 'OK' : 'STALE';
+  const status: 'OK' | 'DEGRADED' | 'STALE' =
+    filtered.length >= config.minValidSources ? 'OK' :
+    filtered.length >= 1 ? 'DEGRADED' :
+    'STALE';
 
-  // 7. Dispersion
+  // 7. Dispersion (always 0 when n==1; meaningful only with multiple sources)
   const dispersion = filteredPrices.length > 1
     ? (Math.max(...filteredPrices) - Math.min(...filteredPrices)) / finalMedian
     : 0;
+
+  const note = status === 'DEGRADED'
+    ? `Single-source fallback: ${filtered.map(r => r.provider).join(', ')}`
+    : undefined;
 
   return {
     asset: 'BTC',
@@ -53,6 +60,7 @@ export function aggregate(responses: ProviderResponse[], config: Config['aggrega
     num_sources: filtered.length,
     dispersion,
     timestamp_local: Date.now(),
-    status
+    status,
+    note
   };
 }
