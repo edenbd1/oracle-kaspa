@@ -1,19 +1,26 @@
 import { ProviderResponse } from '../types.js';
 
+interface CMCQuote {
+  quote?: { USD?: { price?: number } };
+}
+
 interface CMCResponse {
   status?: {
     error_code?: number;
     error_message?: string;
   };
   data?: {
-    BTC?: {
-      quote?: {
-        USD?: {
-          price?: number;
-        };
-      };
-    };
+    BTC?: CMCQuote;
+    ETH?: CMCQuote;
+    KAS?: CMCQuote;
   };
+}
+
+// Last successfully fetched ETH/KAS prices from CMC (display only)
+let lastCMCDisplay: { eth: number | null; kas: number | null } = { eth: null, kas: null };
+
+export function getCMCDisplayPrices(): { eth: number | null; kas: number | null } {
+  return lastCMCDisplay;
 }
 
 const REQUEST_TIMEOUT_MS = 10_000; // 10 second timeout per request
@@ -117,7 +124,7 @@ export function initCMC(envVars: string[]): void {
  * Attempt a single CMC API request with the given key.
  * Returns the result or throws on any failure.
  */
-async function attemptFetch(apiKey: string, keyIndex: number): Promise<{ price: number }> {
+async function attemptFetch(apiKey: string, keyIndex: number): Promise<{ price: number; eth: number | null; kas: number | null }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -125,7 +132,7 @@ async function attemptFetch(apiKey: string, keyIndex: number): Promise<{ price: 
     console.log(`[CMC] Fetching with key #${keyIndex}`);
 
     const res = await fetch(
-      'https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=BTC&convert=USD',
+      'https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=BTC,ETH,KAS&convert=USD',
       {
         headers: { 'X-CMC_PRO_API_KEY': apiKey },
         signal: controller.signal
@@ -152,7 +159,11 @@ async function attemptFetch(apiKey: string, keyIndex: number): Promise<{ price: 
       throw new Error('PARSE_ERROR:Missing price in response');
     }
 
-    return { price };
+    return {
+      price,
+      eth: data.data?.ETH?.quote?.USD?.price ?? null,
+      kas: data.data?.KAS?.quote?.USD?.price ?? null
+    };
   } finally {
     clearTimeout(timeout);
   }
@@ -191,6 +202,8 @@ export async function fetchCoinMarketCap(): Promise<ProviderResponse> {
     try {
       const result = await attemptFetch(key, index);
       console.log(`[CMC] Success with key #${index}, price: ${result.price}`);
+      // Cache ETH/KAS for display (updated on every successful BTC fetch)
+      lastCMCDisplay = { eth: result.eth, kas: result.kas };
       return {
         provider: 'coinmarketcap',
         price: result.price,
