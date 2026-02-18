@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { loadConfig } from './config.js';
-import { initCollector, fetchAllPrices } from './collector/index.js';
+import { initCollector, fetchAllPrices, fetchDisplayPrices } from './collector/index.js';
 import { aggregate } from './aggregator/index.js';
 import { createBundle, hashBundle, storeBundle, updateLatest } from './proofs/index.js';
 import { KaspaAnchor } from './kaspa-anchor/index.js';
@@ -52,13 +52,17 @@ export async function main() {
     const tickStart = Date.now();
     console.log(`\n[TICK] ${new Date().toISOString()}`);
 
-    // 1. Fetch prices
-    const responses = await fetchAllPrices(config);
+    // 1. Fetch prices (BTC oracle + ETH/KAS display in parallel)
+    const [responses, display] = await Promise.all([
+      fetchAllPrices(config),
+      fetchDisplayPrices()
+    ]);
     const okCount = responses.filter(r => r.ok).length;
     console.log(`  Providers: ${okCount}/${responses.length} OK`);
     responses.forEach(r => {
       console.log(`    ${r.provider}: ${r.ok ? `$${r.price?.toFixed(2)}` : `ERROR: ${r.error}`}`);
     });
+    console.log(`  ETH: ${display.eth !== null ? `$${display.eth.toFixed(2)}` : 'N/A'}  |  KAS: ${display.kas !== null ? `$${display.kas.toFixed(4)}` : 'N/A'}`)
 
     // 2. Aggregate
     const index = aggregate(responses, config.aggregation);

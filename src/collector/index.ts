@@ -33,5 +33,5 @@ export async function fetchAllPrices(config: Config): Promise<ProviderResponse[]
   return Promise.all(promises);
 }
 
-export { fetchCoinGecko } from './coingecko.js';
+export { fetchCoinGecko, fetchDisplayPrices } from './coingecko.js';
 export { fetchCoinMarketCap, initCMC } from './coinmarketcap.js';

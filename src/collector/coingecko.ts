@@ -17,3 +17,31 @@ export async function fetchCoinGecko(): Promise<ProviderResponse> {
     return { provider: 'coingecko', price: null, timestamp_local, ok: false, error: String(e) };
   }
 }
+
+export interface DisplayPrices {
+  eth: number | null;
+  kas: number | null;
+}
+
+/**
+ * Fetch ETH and KAS prices from CoinGecko for log display only.
+ * Not used in the oracle bundle or anchor payload.
+ */
+export async function fetchDisplayPrices(): Promise<DisplayPrices> {
+  try {
+    const res = await fetch(
+      'https://api.coingecko.com/api/v3/simple/price?ids=ethereum,kaspa&vs_currencies=usd'
+    );
+    if (!res.ok) return { eth: null, kas: null };
+    const data = await res.json() as {
+      ethereum?: { usd?: number };
+      kaspa?: { usd?: number };
+    };
+    return {
+      eth: data.ethereum?.usd ?? null,
+      kas: data.kaspa?.usd ?? null
+    };
+  } catch {
+    return { eth: null, kas: null };
+  }
+}
