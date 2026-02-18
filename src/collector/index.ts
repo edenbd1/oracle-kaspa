@@ -10,18 +10,21 @@ export function initCollector(config: Config): void {
       initCMC(config.providers.coinmarketcap.apiKeyEnvVars);
     } catch (e) {
       console.warn('CoinMarketCap initialization failed:', e);
-      // Continue without CMC - CoinGecko may still work
     }
   }
   initialized = true;
 }
 
+/**
+ * Fetch BTC, ETH and KAS from all enabled providers in parallel.
+ * Returns a flat array of ProviderResponse (one per asset per provider).
+ */
 export async function fetchAllPrices(config: Config): Promise<ProviderResponse[]> {
   if (!initialized) {
     throw new Error('Collector not initialized. Call initCollector() first.');
   }
 
-  const promises: Promise<ProviderResponse>[] = [];
+  const promises: Promise<ProviderResponse[]>[] = [];
 
   if (config.providers.coingecko.enabled) {
     promises.push(fetchCoinGecko());
@@ -30,8 +33,9 @@ export async function fetchAllPrices(config: Config): Promise<ProviderResponse[]
     promises.push(fetchCoinMarketCap());
   }
 
-  return Promise.all(promises);
+  const results = await Promise.all(promises);
+  return results.flat();
 }
 
-export { fetchCoinGecko, fetchDisplayPrices } from './coingecko.js';
-export { fetchCoinMarketCap, initCMC, getCMCDisplayPrices } from './coinmarketcap.js';
+export { fetchCoinGecko } from './coingecko.js';
+export { fetchCoinMarketCap, initCMC } from './coinmarketcap.js';

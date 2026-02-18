@@ -1,5 +1,6 @@
 export interface ProviderResponse {
   provider: 'coingecko' | 'coinmarketcap';
+  asset: 'BTC' | 'ETH' | 'KAS';
   price: number | null;
   timestamp_local: number;
   ok: boolean;

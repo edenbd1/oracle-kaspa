@@ -6,15 +6,19 @@ function median(values: number[]): number {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-export function aggregate(responses: ProviderResponse[], config: Config['aggregation']): IndexOutput {
-  // 1. Filter valid responses
-  const valid = responses.filter(r => r.ok && r.price !== null);
+export function aggregate(
+  responses: ProviderResponse[],
+  config: Config['aggregation'],
+  asset: 'BTC' | 'ETH' | 'KAS' = 'BTC'
+): IndexOutput {
+  // 1. Filter valid responses for this asset
+  const valid = responses.filter(r => r.asset === asset && r.ok && r.price !== null);
   const prices = valid.map(r => r.price!);
 
-  // 2. Handle edge cases
+  // 2. Handle 0 valid sources → STALE
   if (prices.length === 0) {
     return {
-      asset: 'BTC',
+      asset,
       quote: 'USD',
       price: 0,
       sources_used: [],
@@ -25,7 +29,7 @@ export function aggregate(responses: ProviderResponse[], config: Config['aggrega
     };
   }
 
-  // 3. Calculate initial median
+  // 3. Initial median
   const initialMedian = median(prices);
 
   // 4. Outlier filter
@@ -34,16 +38,16 @@ export function aggregate(responses: ProviderResponse[], config: Config['aggrega
   );
   const filteredPrices = filtered.map(r => r.price!);
 
-  // 5. Final median (or initial if all filtered out)
+  // 5. Final median
   const finalMedian = filteredPrices.length > 0 ? median(filteredPrices) : initialMedian;
 
-  // 6. Check quorum
+  // 6. Quorum check
   const status: 'OK' | 'DEGRADED' | 'STALE' =
     filtered.length >= config.minValidSources ? 'OK' :
     filtered.length >= 1 ? 'DEGRADED' :
     'STALE';
 
-  // 7. Dispersion (always 0 when n==1; meaningful only with multiple sources)
+  // 7. Dispersion (0 when single source)
   const dispersion = filteredPrices.length > 1
     ? (Math.max(...filteredPrices) - Math.min(...filteredPrices)) / finalMedian
     : 0;
@@ -53,7 +57,7 @@ export function aggregate(responses: ProviderResponse[], config: Config['aggrega
     : undefined;
 
   return {
-    asset: 'BTC',
+    asset,
     quote: 'USD',
     price: finalMedian,
     sources_used: filtered.map(r => r.provider),

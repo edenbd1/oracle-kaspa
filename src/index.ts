@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { loadConfig } from './config.js';
-import { initCollector, fetchAllPrices, fetchDisplayPrices, getCMCDisplayPrices } from './collector/index.js';
+import { initCollector, fetchAllPrices } from './collector/index.js';
 import { aggregate } from './aggregator/index.js';
 import { createBundle, hashBundle, storeBundle, updateLatest } from './proofs/index.js';
 import { KaspaAnchor } from './kaspa-anchor/index.js';
@@ -9,7 +9,13 @@ import { updateOracleState } from './state.js';
 import { AnchorPayload } from './types.js';
 
 function jitter(seconds: number): number {
-  return (Math.random() * 2 - 1) * seconds * 1000; // ±seconds in ms
+  return (Math.random() * 2 - 1) * seconds * 1000;
+}
+
+function fmtIndex(idx: ReturnType<typeof aggregate>): string {
+  if (idx.status === 'STALE') return 'N/A [STALE]';
+  const decimals = idx.asset === 'KAS' ? 4 : 2;
+  return `$${idx.price.toFixed(decimals)} [${idx.status}]`;
 }
 
 export async function main() {
@@ -21,18 +27,15 @@ export async function main() {
   console.log(`Network: ${config.network}`);
   console.log(`Interval: ${config.anchorIntervalSeconds}s (±${config.jitterSeconds}s jitter)`);
 
-  // Initialize collector (loads API keys from env)
   initCollector(config);
 
   const privateKey = process.env.KASPA_PRIVATE_KEY;
-  // Use env var if explicitly set (even if empty → use Resolver), otherwise fall back to config
   const rpcUrl = process.env.KASPA_RPC_URL !== undefined ? process.env.KASPA_RPC_URL : config.rpcUrl;
 
   if (!privateKey) {
     console.warn('KASPA_PRIVATE_KEY not set — running without on-chain anchoring');
   } else {
     try {
-      // If rpcUrl is empty/undefined, KaspaAnchor uses public Resolver (auto-discovery)
       await anchor.connect(rpcUrl || undefined, privateKey, config.network);
       anchorConnected = true;
       console.log('Kaspa connected — on-chain anchoring enabled');
@@ -41,10 +44,8 @@ export async function main() {
     }
   }
 
-  // Initialize oracle state
   updateOracleState({ network: config.network });
 
-  // Start API server for bundle access (with anchor reference for health checks)
   if (anchorConnected) setAnchor(anchor);
   startApiServer();
 
@@ -52,47 +53,43 @@ export async function main() {
     const tickStart = Date.now();
     console.log(`\n[TICK] ${new Date().toISOString()}`);
 
-    // 1. Fetch prices (BTC oracle + ETH/KAS display in parallel)
-    // Fetch BTC oracle prices + ETH/KAS display prices in parallel
-    // ETH/KAS display: CoinGecko preferred, CMC cached values as fallback
-    const [responses, cgDisplay] = await Promise.all([
-      fetchAllPrices(config),
-      fetchDisplayPrices()
-    ]);
-    const cmcDisplay = getCMCDisplayPrices();
-    const ethPrice = cgDisplay.eth ?? cmcDisplay.eth;
-    const kasPrice = cgDisplay.kas ?? cmcDisplay.kas;
+    // 1. Fetch all assets from all providers in parallel (single call per provider)
+    const responses = await fetchAllPrices(config);
 
-    const okCount = responses.filter(r => r.ok).length;
-    console.log(`  Providers: ${okCount}/${responses.length} OK`);
-    responses.forEach(r => {
+    // 2. Aggregate each asset independently (same pipeline: median, outlier filter, quorum)
+    const btcIndex = aggregate(responses, config.aggregation, 'BTC');
+    const ethIndex = aggregate(responses, config.aggregation, 'ETH');
+    const kasIndex = aggregate(responses, config.aggregation, 'KAS');
+
+    // 3. Log provider results per asset
+    const btcResponses = responses.filter(r => r.asset === 'BTC');
+    const okCount = btcResponses.filter(r => r.ok).length;
+    console.log(`  Providers: ${okCount}/${btcResponses.length} OK`);
+    btcResponses.forEach(r => {
       console.log(`    ${r.provider}: ${r.ok ? `$${r.price?.toFixed(2)}` : `ERROR: ${r.error}`}`);
     });
-    console.log(`  ETH: ${ethPrice !== null ? `$${ethPrice.toFixed(2)}` : 'N/A'}  |  KAS: ${kasPrice !== null ? `$${kasPrice.toFixed(4)}` : 'N/A'}`)
 
-    // 2. Aggregate
-    const index = aggregate(responses, config.aggregation);
-    console.log(`  Index: $${index.price.toFixed(2)} [${index.status}]`);
+    // 4. Log aggregated prices for all assets
+    console.log(`  BTC: ${fmtIndex(btcIndex)}  |  ETH: ${fmtIndex(ethIndex)}  |  KAS: ${fmtIndex(kasIndex)}`);
 
-    // 3. Create bundle and compute hash
-    const bundle = createBundle(responses, index, config);
+    // 5. Create bundle and hash (BTC only — oracle anchor)
+    const bundle = createBundle(btcResponses, btcIndex, config);
     const hash = hashBundle(bundle);
     const h = hash.slice(0, 16);
     console.log(`  Bundle: ${h}...`);
 
-    // 4. Anchor if at least 1 source is valid (OK or DEGRADED); skip only on STALE (0 sources)
+    // 6. Anchor BTC on-chain if at least 1 source valid
     let txId: string | null = null;
-    if (index.status === 'OK' || index.status === 'DEGRADED') {
-      if (index.status === 'DEGRADED' && index.note) {
-        console.log(`  Note: ${index.note}`);
+    if (btcIndex.status === 'OK' || btcIndex.status === 'DEGRADED') {
+      if (btcIndex.status === 'DEGRADED' && btcIndex.note) {
+        console.log(`  Note: ${btcIndex.note}`);
       }
       if (anchorConnected) {
-        // Payload contains only: d, h, n, p (alphabetically sorted for deterministic CBOR)
         const payload: AnchorPayload = {
-          d: Math.round(index.dispersion * 10000) / 10000,
+          d: Math.round(btcIndex.dispersion * 10000) / 10000,
           h,
-          n: index.num_sources,
-          p: Math.round(index.price * 100) / 100,
+          n: btcIndex.num_sources,
+          p: Math.round(btcIndex.price * 100) / 100,
         };
         txId = await anchor.anchor(payload);
         if (txId) {
@@ -104,34 +101,30 @@ export async function main() {
         console.log(`  TX: skipped (no RPC connection)`);
       }
     } else {
-      // STALE: 0 valid sources — nothing to anchor
-      console.log(`  SKIPPED (${index.status})`);
+      console.log(`  SKIPPED (${btcIndex.status})`);
     }
 
-    // 5. Store bundle with txid and update latest
+    // 7. Store bundle and update state
     storeBundle(bundle, hash, txId || undefined);
     updateLatest(hash, txId);
 
-    // 6. Update oracle state for health endpoint
     updateOracleState({
       last_tick_id: bundle.tick_id,
       last_updated_at: new Date().toISOString(),
       last_txid: txId,
       last_hash: h,
-      last_price: index.price,
+      last_price: btcIndex.price,
       providers_ok: okCount,
-      providers_total: responses.length,
-      last_index_status: index.status
+      providers_total: btcResponses.length,
+      last_index_status: btcIndex.status
     });
 
     console.log(`  Done in ${Date.now() - tickStart}ms`);
 
-    // Schedule next tick with jitter
     const nextDelay = config.anchorIntervalSeconds * 1000 + jitter(config.jitterSeconds);
     setTimeout(tick, nextDelay);
   }
 
-  // Handle graceful shutdown
   process.on('SIGINT', async () => {
     console.log('\n[Oracle] Shutting down...');
     if (anchorConnected) await anchor.disconnect();
@@ -139,16 +132,14 @@ export async function main() {
   });
 
   process.on('SIGTERM', async () => {
-    console.log('\n[Oracle] Shutting down...');
+    console.log('\n[Oracle] Shutting down...');;
     if (anchorConnected) await anchor.disconnect();
     process.exit(0);
   });
 
-  // Start first tick
   tick();
 }
 
-// Allow running standalone
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch(console.error);
 }
